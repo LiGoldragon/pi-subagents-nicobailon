@@ -68,6 +68,13 @@ function nestedRunDisplayName(run: NestedRunSummary): string {
 	return run.id;
 }
 
+function formatSteeringSummary(input: { steerCount?: number; lastSteerAt?: number }): string | undefined {
+	const parts: string[] = [];
+	if (input.steerCount !== undefined) parts.push(`${input.steerCount} steer${input.steerCount === 1 ? "" : "s"}`);
+	if (typeof input.lastSteerAt === "number" && Number.isFinite(input.lastSteerAt)) parts.push(`last ${new Date(input.lastSteerAt).toISOString()}`);
+	return parts.length ? parts.join(", ") : undefined;
+}
+
 function formatNestedExactStatus(rootRunId: string, run: NestedRunSummary): string {
 	const lines = [
 		`Nested run: ${run.id}`,
@@ -198,12 +205,14 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 			const started = new Date(status.startedAt).toISOString();
 			const updated = status.lastUpdate ? new Date(status.lastUpdate).toISOString() : "n/a";
 			const statusActivityText = status.state === "running" ? formatActivityLabel(status.lastActivityAt, status.activityState) : undefined;
+			const steeringText = formatSteeringSummary(status);
 
 			const lines = [
 				`Run: ${status.runId}`,
 				`State: ${status.state}`,
 				status.error ? `Error: ${status.error}` : undefined,
 				statusActivityText ? `Activity: ${statusActivityText}` : undefined,
+				steeringText ? `Steering: ${steeringText}` : undefined,
 				`Mode: ${status.mode}`,
 				`Progress: ${progressLabel}`,
 				status.pendingAppends ? `Pending appends: ${status.pendingAppends}` : undefined,
@@ -218,11 +227,13 @@ export function inspectSubagentStatus(params: RunStatusParams, deps: RunStatusDe
 				const stepActivityText = step.status === "running" ? formatActivityLabel(step.lastActivityAt, step.activityState) : undefined;
 				const modelThinking = formatModelThinking(step.model, step.thinking);
 				const modelText = modelThinking ? ` (${modelThinking})` : "";
+				const steeringText = formatSteeringSummary(step);
+				const steeringSuffix = steeringText ? `, steering: ${steeringText}` : "";
 				const errorText = step.error ? `, error: ${step.error}` : "";
 				const acceptanceText = step.acceptance?.status ? `, acceptance: ${step.acceptance.status}` : "";
 				const display = step.label ? `${step.label} (${step.agent})` : step.agent;
 				const phase = step.phase ? `[${step.phase}] ` : "";
-				lines.push(`${stepLineLabel(status, index)}: ${phase}${display} ${step.status}${modelText}${stepActivityText ? `, ${stepActivityText}` : ""}${acceptanceText}${errorText}`);
+				lines.push(`${stepLineLabel(status, index)}: ${phase}${display} ${step.status}${modelText}${stepActivityText ? `, ${stepActivityText}` : ""}${steeringSuffix}${acceptanceText}${errorText}`);
 				lines.push(...formatNestedRunStatusLines(step.children, { indent: "  ", commandHints: true, maxLines: 20 }));
 				const stepOutputPath = path.join(asyncDir, `output-${index}.log`);
 				if (stepOutputPath !== outputPath && fs.existsSync(stepOutputPath)) lines.push(`  Output: ${stepOutputPath}`);
