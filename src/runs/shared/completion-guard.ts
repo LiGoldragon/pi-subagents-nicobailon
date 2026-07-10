@@ -18,10 +18,11 @@ const REVIEWER_REQUIRED_EDIT_PATTERNS = [
 ];
 
 const EXPLICIT_NO_EDIT_PATTERNS = [
-	/\bdo not edit\b/i,
-	/\bdon't edit\b/i,
-	/\bdo not modify\b/i,
-	/\bdo not change files\b/i,
+	/\b(?:do not|don't|must not|never) edit\b/i,
+	/\b(?:do not|don't|must not|never) modify\b/i,
+	/\b(?:do not|don't|must not|never) change files?\b/i,
+	/\b(?:not|never) a write(?:-capable)? task\b/i,
+	/\bwithout (?:making )?(?:edits|changes)\b/i,
 ];
 
 const SCOPED_NO_EDIT_CONSTRAINT_PATTERNS = [

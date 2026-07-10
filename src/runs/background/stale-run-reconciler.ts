@@ -267,7 +267,18 @@ function buildFailedRepair(status: AsyncStatus, asyncDir: string, now: number, r
 	};
 }
 
+function repairStatusFromResult(status: AsyncStatus, asyncDir: string, resultPath: string, now: number): ReconcileAsyncRunResult | undefined {
+	const terminalStatus = terminalStatusFromResult(status, resultPath, now);
+	if (!terminalStatus) return undefined;
+	writeAtomicJson(path.join(asyncDir, "status.json"), terminalStatus);
+	return { status: terminalStatus, repaired: true, resultPath, message: "Existing async result file was used to repair stale running status." };
+}
+
 function writeFailedRepair(asyncDir: string, status: AsyncStatus, resultPath: string, now: number, reason?: string): ReconcileAsyncRunResult {
+	// The runner can write its result after the initial existence check but
+	// before stale repair materializes a failure. Completion is authoritative.
+	const resultRepair = repairStatusFromResult(status, asyncDir, resultPath, now);
+	if (resultRepair) return resultRepair;
 	const repair = buildFailedRepair(status, asyncDir, now, reason);
 	writeAtomicJson(resultPath, repair.result);
 	writeAtomicJson(path.join(asyncDir, "status.json"), repair.status);
@@ -356,12 +367,9 @@ export function reconcileAsyncRun(asyncDir: string, options: ReconcileAsyncRunOp
 	const runId = effectiveStatus.runId || path.basename(asyncDir);
 	const resultPath = path.join(options.resultsDir ?? RESULTS_DIR, `${runId}.json`);
 	if (fs.existsSync(resultPath)) {
-		const terminalStatus = effectiveStatus.state === "running" || effectiveStatus.state === "queued"
-			? terminalStatusFromResult(effectiveStatus, resultPath, now)
-			: undefined;
-		if (terminalStatus) {
-			writeAtomicJson(path.join(asyncDir, "status.json"), terminalStatus);
-			return { status: terminalStatus, repaired: true, resultPath, message: "Existing async result file was used to repair stale running status." };
+		if (effectiveStatus.state === "running" || effectiveStatus.state === "queued") {
+			const resultRepair = repairStatusFromResult(effectiveStatus, asyncDir, resultPath, now);
+			if (resultRepair) return resultRepair;
 		}
 		return { status: effectiveStatus, repaired: false, resultPath };
 	}

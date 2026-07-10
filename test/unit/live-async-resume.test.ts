@@ -120,6 +120,50 @@ describe("live async resume interrupt", () => {
 		}
 	});
 
+	it("resolves a completion written while resumed async liveness is reconciled", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-live-async-resume-completion-"));
+		try {
+			const asyncRoot = path.join(root, "runs");
+			const resultsDir = path.join(root, "results");
+			const asyncDir = path.join(asyncRoot, "run-completed");
+			const sessionFile = path.join(root, "worker.jsonl");
+			fs.writeFileSync(sessionFile, "{}\n", "utf-8");
+			writeJson(path.join(asyncDir, "status.json"), {
+				runId: "run-completed",
+				mode: "single",
+				state: "running",
+				pid: 12345,
+				cwd: root,
+				startedAt: 100,
+				lastUpdate: Date.now(),
+				steps: [{ agent: "worker", status: "running", startedAt: 100, sessionFile }],
+			});
+
+			const target = resolveAsyncResumeTarget({ id: "run-completed" }, {
+				asyncDirRoot: asyncRoot,
+				resultsDir,
+				kill: () => {
+					fs.mkdirSync(resultsDir, { recursive: true });
+					writeJson(path.join(resultsDir, "run-completed.json"), {
+						id: "run-completed",
+						success: true,
+						state: "complete",
+						results: [{ agent: "worker", success: true, sessionFile }],
+					});
+					const error = new Error("missing process") as NodeJS.ErrnoException;
+					error.code = "ESRCH";
+					throw error;
+				},
+			});
+
+			assert.equal(target.kind, "revive");
+			assert.equal(target.state, "complete");
+			assert.equal(target.sessionFile, sessionFile);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("does not report success or leave a stale request when the runner pid is gone", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-live-async-resume-esrch-"));
 		try {

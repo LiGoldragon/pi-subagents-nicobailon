@@ -223,6 +223,39 @@ describe("async stale-run reconciliation", () => {
 		}
 	});
 
+	it("prefers a result written while a dead runner is being reconciled", () => {
+		const root = tempRoot("pi-stale-result-race-");
+		try {
+			const asyncDir = path.join(root, "run-race");
+			const resultsDir = path.join(root, "results");
+			writeStatus(asyncDir, {
+				runId: "run-race",
+				mode: "single",
+				state: "running",
+				pid: 12345,
+				startedAt: 1000,
+				lastUpdate: 1000,
+				steps: [{ agent: "worker", status: "running", startedAt: 1000 }],
+			});
+			const resultPath = path.join(resultsDir, "run-race.json");
+			const result = reconcileAsyncRun(asyncDir, {
+				resultsDir,
+				kill: () => {
+					fs.mkdirSync(resultsDir, { recursive: true });
+					fs.writeFileSync(resultPath, JSON.stringify({ id: "run-race", success: true, state: "complete", summary: "completed at runner exit" }), "utf-8");
+					throw errno("ESRCH");
+				},
+				now: () => 2000,
+			});
+
+			assert.equal(result.status?.state, "complete");
+			assert.match(result.message ?? "", /Existing async result file/);
+			assert.equal(JSON.parse(fs.readFileSync(resultPath, "utf-8")).success, true);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("preserves an existing result instead of overwriting it with stale-run failure", () => {
 		const root = tempRoot("pi-stale-existing-result-");
 		try {

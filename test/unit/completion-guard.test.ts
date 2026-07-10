@@ -106,6 +106,9 @@ test("worker with mutating-capable tools still triggers when no mutation is obse
 test("review-only, research, and framework output instructions do not expect mutation", () => {
 	assert.equal(expectsImplementationMutation("worker", "Review only: return findings, do not edit"), false);
 	assert.equal(expectsImplementationMutation("worker", "Do not edit files. Tell me how to fix the bug."), false);
+	assert.equal(expectsImplementationMutation("worker", "This is not a write task. Explain how to fix the bug."), false);
+	assert.equal(expectsImplementationMutation("worker", "Never edit or modify files; return a proposed patch."), false);
+	assert.equal(expectsImplementationMutation("worker", "Inspect the failure without making changes."), false);
 	assert.equal(expectsImplementationMutation("worker", "Review the diff and suggest fixes only. Do not edit files."), false);
 	assert.equal(expectsImplementationMutation("worker", "Implement this. Do not edit files outside this repo. Do not edit files."), false);
 	assert.equal(expectsImplementationMutation("worker", "Investigate why this failed"), false);

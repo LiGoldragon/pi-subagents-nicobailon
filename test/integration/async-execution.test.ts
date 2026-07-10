@@ -811,7 +811,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(fs.existsSync(path.join(tempDir, "progress.md")), false);
 	});
 
-	it("async single rejects explicit reviewed acceptance without a reviewer result", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("async single keeps reviewed acceptance optional without review.required", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({
 			output: [
 				"implemented",
@@ -852,11 +852,11 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const result = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
 		const status = JSON.parse(fs.readFileSync(path.join(ASYNC_DIR, id, "status.json"), "utf-8")) as AsyncStatusPayload;
 
-		assert.equal(result.success, false);
-		assert.equal(result.results[0]?.acceptance?.status, "rejected");
+		assert.equal(result.success, true);
+		assert.equal(result.results[0]?.acceptance?.status, "checked");
 		assert.ok(result.results[0]?.acceptance?.childReport);
 		assert.equal(result.results[0]?.acceptance?.reviewResult?.status, "needs-parent-decision");
-		assert.equal(status.steps?.[0]?.acceptance?.status, "rejected");
+		assert.equal(status.steps?.[0]?.acceptance?.status, "checked");
 	});
 
 	it("top-level async chain suppresses progress for {task} review-only tasks", { skip: !isAsyncAvailable() || !createSubagentExecutor ? "jiti or executor not available" : undefined }, async () => {

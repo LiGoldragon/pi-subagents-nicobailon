@@ -48,6 +48,7 @@ describe("acceptance gates", () => {
 		assert.equal(resolveEffectiveAcceptance({ agentName: "reviewer", task: "Review-only. Do not edit.", mode: "single" }).level, "attested");
 		assert.equal(resolveEffectiveAcceptance({ agentName: "worker", task: "Implement the fix", mode: "single" }).level, "checked");
 		assert.equal(resolveEffectiveAcceptance({ agentName: "worker", task: "Implement the fix", mode: "single", async: true }).level, "reviewed");
+		assert.equal(resolveEffectiveAcceptance({ agentName: "worker", task: "This is not a write task. Explain how to fix the bug.", mode: "single" }).level, "attested");
 		assert.equal(resolveEffectiveAcceptance({ agentName: "worker", task: "Fix each item", mode: "chain", dynamic: true }).level, "reviewed");
 	});
 
@@ -186,7 +187,7 @@ describe("acceptance gates", () => {
 			commandsRun: [{ command: "npm test", exitCode: 0 }],
 		}));
 		assert.equal(invalidCommandReport.report, undefined);
-		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.result: expected one of "passed", "failed", "not-run"; got missing/);
+		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.result: expected one of "passed", "failed", "blocked", "not-run"; got missing/);
 		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.summary: expected string; got missing/);
 
 		const invalidCriteriaReport = parseAcceptanceReport(report({
@@ -207,6 +208,41 @@ describe("acceptance gates", () => {
 
 		assert.equal(acceptance.level, "none");
 		assert.deepEqual(acceptance.evidence, []);
+	});
+
+	it("accepts explicit empty read-only change evidence but rejects omitted fields", async () => {
+		const cwd = tempRepo();
+		try {
+			const acceptance = resolveEffectiveAcceptance({
+				agentName: "scout",
+				task: "Inspect the implementation. Do not edit files.",
+				explicit: { level: "reviewed", review: { required: false } },
+			});
+			const accepted = await evaluateAcceptance({
+				acceptance,
+				output: report({ changedFiles: [], testsAddedOrUpdated: [] }),
+				cwd,
+			});
+			assert.equal(accepted.status, "checked");
+			assert.equal(accepted.runtimeChecks.find((check) => check.id === "evidence:changed-files")?.status, "passed");
+			assert.equal(accepted.runtimeChecks.find((check) => check.id === "evidence:tests-added")?.status, "passed");
+
+			const rejected = await evaluateAcceptance({
+				acceptance,
+				output: report({ changedFiles: undefined, testsAddedOrUpdated: [] }),
+				cwd,
+			});
+			assert.equal(rejected.status, "rejected");
+			assert.match(acceptanceFailureMessage(rejected) ?? "", /changed-files evidence missing/);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
+
+	it("accepts blocked command evidence", () => {
+		const parsed = parseAcceptanceReport(report({ commandsRun: [{ command: "lojix deploy", result: "blocked", summary: "waiting for required approval" }] }));
+		assert.equal(parsed.error, undefined);
+		assert.equal(parsed.report?.commandsRun?.[0]?.result, "blocked");
 	});
 
 	it("checked mode rejects missing required evidence", async () => {
@@ -359,23 +395,26 @@ describe("acceptance gates", () => {
 		}
 	});
 
-	it("does not mark reviewed without an independent reviewer result", async () => {
+	it("keeps reviewed escalation optional unless review.required is true", async () => {
 		const cwd = tempRepo();
 		try {
-			const acceptance = resolveEffectiveAcceptance({
+			const optionalAcceptance = resolveEffectiveAcceptance({
 				agentName: "worker",
 				task: "Implement a fix",
-				explicit: {
-					level: "reviewed",
-					review: false,
-				},
+				explicit: { level: "reviewed" },
 			});
-			assert.equal(acceptance.level, "reviewed");
+			const optionalLedger = await evaluateAcceptance({ acceptance: optionalAcceptance, output: report(), cwd });
+			assert.equal(optionalLedger.status, "checked");
+			assert.equal(optionalLedger.reviewResult?.findings[0]?.severity, "non-blocking");
 
-			const ledger = await evaluateAcceptance({ acceptance, output: report(), cwd });
-			assert.equal(ledger.status, "rejected");
-			assert.equal(ledger.reviewResult?.status, "needs-parent-decision");
-			assert.match(acceptanceFailureMessage(ledger) ?? "", /review required/i);
+			const requiredAcceptance = resolveEffectiveAcceptance({
+				agentName: "worker",
+				task: "Implement a fix",
+				explicit: { level: "reviewed", review: { required: true } },
+			});
+			const requiredLedger = await evaluateAcceptance({ acceptance: requiredAcceptance, output: report(), cwd });
+			assert.equal(requiredLedger.status, "rejected");
+			assert.equal(requiredLedger.reviewResult?.findings[0]?.severity, "blocker");
 		} finally {
 			fs.rmSync(cwd, { recursive: true, force: true });
 		}

@@ -400,7 +400,7 @@ export interface AcceptanceReport {
 	testsAddedOrUpdated?: string[];
 	commandsRun?: Array<{
 		command: string;
-		result: "passed" | "failed" | "not-run";
+		result: "passed" | "failed" | "blocked" | "not-run";
 		summary: string;
 	}>;
 	validationOutput?: string[];

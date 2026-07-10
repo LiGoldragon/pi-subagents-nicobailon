@@ -78,7 +78,7 @@ function inferLevel(input: {
 	const task = input.task?.toLowerCase() ?? "";
 	const reasons: string[] = [];
 	const readOnlyAgent = /\b(?:reviewer|scout|context-builder|researcher|analyst)\b/.test(agent);
-	const readOnlyTask = /\b(?:read[- ]only|review[- ]only|do not edit|don't edit|no edits|without edits|inspect|summari[sz]e)\b/.test(task);
+	const readOnlyTask = /\b(?:read[- ]only|review[- ]only|do not edit|don't edit|must not edit|never edit|not a write task|no edits|without (?:making )?edits|without making changes|inspect|summari[sz]e)\b/.test(task);
 	const writeTask = /\b(?:fix|implement|update|write|edit|modify|migrate|release|security|delete|remove|refactor|commit)\b/.test(task)
 		|| /\bworker\b/.test(agent);
 	const risky = Boolean(input.async && writeTask)
@@ -285,7 +285,8 @@ export function resolveEffectiveAcceptance(input: {
 		evidence,
 	);
 	let review = explicit.review !== undefined ? explicit.review : inferred.review;
-	if (level === "reviewed" && explicitLevel !== "auto" && explicitLevel !== "reviewed" && explicit.review === undefined && review && review !== false) {
+	const explicitlyRequiredReview = explicit.review !== false && explicit.review?.required === true;
+	if (level === "reviewed" && !explicitlyRequiredReview && review && review !== false) {
 		review = { ...review, required: false };
 	}
 	return {
@@ -385,7 +386,7 @@ function isCommandsRunArray(value: unknown): value is NonNullable<AcceptanceRepo
 		if (!item || typeof item !== "object" || Array.isArray(item)) return false;
 		const command = item as { command?: unknown; result?: unknown; summary?: unknown };
 		return typeof command.command === "string"
-			&& (command.result === "passed" || command.result === "failed" || command.result === "not-run")
+			&& (command.result === "passed" || command.result === "failed" || command.result === "blocked" || command.result === "not-run")
 			&& typeof command.summary === "string";
 	});
 }
@@ -588,8 +589,8 @@ function validateAcceptanceReport(value: unknown, pathLabel = ""): { report?: Ac
 				}
 				const command = item as { command?: unknown; result?: unknown; summary?: unknown };
 				if (typeof command.command !== "string" || !command.command.trim()) pushTypeError(errors, `${itemPath}.command`, "non-empty string", command.command);
-				if (command.result !== "passed" && command.result !== "failed" && command.result !== "not-run") {
-					pushTypeError(errors, `${itemPath}.result`, "one of \"passed\", \"failed\", \"not-run\"", command.result);
+				if (command.result !== "passed" && command.result !== "failed" && command.result !== "blocked" && command.result !== "not-run") {
+					pushTypeError(errors, `${itemPath}.result`, "one of \"passed\", \"failed\", \"blocked\", \"not-run\"", command.result);
 				}
 				if (typeof command.summary !== "string") pushTypeError(errors, `${itemPath}.summary`, "string", command.summary);
 			}
@@ -629,10 +630,10 @@ function checkCriteriaSatisfied(criteria: ResolvedAcceptanceGate[], report: Acce
 	});
 }
 
-function reportEvidencePresent(report: AcceptanceReport, kind: AcceptanceEvidenceKind): boolean {
+function reportEvidencePresent(report: AcceptanceReport, kind: AcceptanceEvidenceKind, allowEmptyChangeEvidence: boolean): boolean {
 	switch (kind) {
-		case "changed-files": return isStringArray(report.changedFiles) && report.changedFiles.length > 0;
-		case "tests-added": return isStringArray(report.testsAddedOrUpdated) && report.testsAddedOrUpdated.length > 0;
+		case "changed-files": return isStringArray(report.changedFiles) && (allowEmptyChangeEvidence || report.changedFiles.length > 0);
+		case "tests-added": return isStringArray(report.testsAddedOrUpdated) && (allowEmptyChangeEvidence || report.testsAddedOrUpdated.length > 0);
 		case "commands-run": return Array.isArray(report.commandsRun) && report.commandsRun.length > 0;
 		case "validation-output": return isStringArray(report.validationOutput) && report.validationOutput.length > 0;
 		case "residual-risks": return isStringArray(report.residualRisks);
@@ -656,8 +657,9 @@ function checkNoStagedFiles(cwd: string): AcceptanceRuntimeCheck {
 
 function runStructuralChecks(acceptance: ResolvedAcceptanceConfig, report: AcceptanceReport, cwd: string): AcceptanceRuntimeCheck[] {
 	const checks: AcceptanceRuntimeCheck[] = [];
+	const allowEmptyChangeEvidence = acceptance.inferredReason.some((reason) => reason.includes("read-only"));
 	for (const kind of acceptance.evidence) {
-		const present = reportEvidencePresent(report, kind);
+		const present = reportEvidencePresent(report, kind, allowEmptyChangeEvidence);
 		checks.push({
 			id: `evidence:${kind}`,
 			status: present ? "passed" : "failed",
@@ -851,16 +853,16 @@ export async function evaluateAcceptance(input: {
 			ledger.reviewResult = input.reviewResult;
 			ledger.status = input.reviewResult.status === "no-blockers" ? "reviewed" : "rejected";
 		} else {
-			const optionalReview = acceptance.review && acceptance.review !== false && acceptance.review.required === false;
+			const reviewRequired = acceptance.review !== false && acceptance.review?.required === true;
 			ledger.reviewResult = {
 				status: "needs-parent-decision",
 				findings: [{
-					severity: acceptance.explicit && !optionalReview ? "blocker" : "non-blocking",
+					severity: reviewRequired ? "blocker" : "non-blocking",
 					issue: "Reviewed acceptance requires an independent reviewer result.",
 					rationale: "The run cannot be marked reviewed from child evidence alone.",
 				}],
 			};
-			if (acceptance.review === false || (acceptance.explicit && !optionalReview)) ledger.status = "rejected";
+			if (reviewRequired) ledger.status = "rejected";
 		}
 	}
 
