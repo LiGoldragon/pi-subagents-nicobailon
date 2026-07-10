@@ -80,11 +80,19 @@ describe("resolveSingleOutputPath", () => {
 });
 
 describe("injectSingleOutputInstruction", () => {
-	it("appends output instruction with resolved path", () => {
+	it("appends direct-write instruction for write-capable agents", () => {
 		const output = injectSingleOutputInstruction("Analyze this", "/tmp/report.md");
 		assert.match(output, /Write your findings to exactly this path: \/tmp\/report.md/);
 		assert.match(output, /This path is authoritative for this run\./);
 		assert.match(output, /Ignore any other output filename or output path mentioned elsewhere/);
+	});
+
+	it("tells read-only agents that the runtime persists their final artifact", () => {
+		const output = injectSingleOutputInstruction("Analyze this", "/tmp/report.md", false);
+		assert.match(output, /Return the complete artifact in your final response/);
+		assert.match(output, /runtime will persist it to exactly this path: \/tmp\/report.md/);
+		assert.match(output, /Do not call contact_supervisor merely because this run has no write-capable tool/);
+		assert.doesNotMatch(output, /^Write your findings to exactly this path:/m);
 	});
 });
 

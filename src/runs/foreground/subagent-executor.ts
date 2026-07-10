@@ -144,6 +144,7 @@ export interface SubagentParamsLike {
 	worktree?: boolean;
 	context?: "fresh" | "fork";
 	async?: boolean;
+	notify?: "owner" | "child";
 	timeoutMs?: number;
 	maxRuntimeMs?: number;
 	turnBudget?: TurnBudgetConfig;
@@ -1928,6 +1929,7 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 			controlIntercomTarget,
 			childIntercomTarget,
 			nestedRoute,
+			notificationVisibility: params.notify,
 			timeoutMs: data.timeoutMs,
 			turnBudget: data.turnBudget,
 			toolBudget: data.toolBudget,
@@ -1964,6 +1966,7 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 			controlIntercomTarget,
 			childIntercomTarget,
 			nestedRoute,
+			notificationVisibility: params.notify,
 			timeoutMs: data.timeoutMs,
 			turnBudget: data.turnBudget,
 			toolBudget: data.toolBudget,
@@ -2015,6 +2018,7 @@ function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): AgentTool
 			controlIntercomTarget,
 			childIntercomTarget: childIntercomTarget ? (agent, index) => childIntercomTarget(agent, index) : undefined,
 			nestedRoute,
+			notificationVisibility: params.notify,
 			acceptance: params.acceptance,
 			timeoutMs: data.timeoutMs,
 			turnBudget: data.turnBudget,

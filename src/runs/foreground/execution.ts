@@ -44,7 +44,7 @@ import {
 	extractTextFromContent,
 } from "../../shared/utils.ts";
 import { buildSkillInjection, resolveSkillsWithFallback } from "../../agents/skills.ts";
-import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
+import { agentHasWriteTools, buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
@@ -1157,7 +1157,7 @@ export async function runSync(
 	if (memoryInjection) {
 		systemPrompt = systemPrompt ? `${systemPrompt}\n\n${memoryInjection}` : memoryInjection;
 	}
-	systemPrompt = injectOutputPathSystemPrompt(systemPrompt, options.outputPath);
+	systemPrompt = injectOutputPathSystemPrompt(systemPrompt, options.outputPath, agentHasWriteTools(agent));
 
 	const candidates = buildModelCandidates(
 		options.modelOverride ?? agent.model,

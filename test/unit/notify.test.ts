@@ -93,7 +93,7 @@ function completionResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe("registerSubagentNotify", () => {
-	it("uses a fallback summary when a background completion is empty", () => {
+	it("uses a truthful fallback summary when an accountable completion is empty", () => {
 		const { events, sent } = createPi();
 
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, {
@@ -110,7 +110,7 @@ describe("registerSubagentNotify", () => {
 		assert.deepEqual(sent[0], {
 			message: {
 				customType: "subagent-notify",
-				content: "Background task completed: **worker**\n\n(no output)",
+				content: "Background task completed: **worker**\n\nCompleted without a textual summary. Inspect the accountable background run for details.",
 				display: true,
 			},
 			options: { triggerTurn: true },
@@ -213,6 +213,57 @@ describe("registerSubagentNotify", () => {
 		});
 
 		assert.deepEqual(sent, []);
+	});
+
+	it("suppresses nested completions until their caller explicitly requests child visibility", () => {
+		const { events, sent } = createPi();
+
+		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, completionResult({
+			id: "nested-default",
+			sessionId: "session-1",
+			summary: "internal worker result",
+			notification: { owner: "nested", visibility: "owner" },
+		}));
+		assert.equal(sent.length, 0);
+
+		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, completionResult({
+			id: "nested-visible",
+			sessionId: "session-1",
+			summary: "requested child result",
+			notification: { owner: "nested", visibility: "child" },
+		}));
+		assert.equal(sent.length, 1);
+		assert.match((sent[0]!.message as { content: string }).content, /requested child result/);
+	});
+
+	it("notifies only the accountable root when nested workers fail", () => {
+		const { events, sent } = createPi();
+		const nested = (id: string, summary: string, state: string) => ({
+			id,
+			sessionId: "session-1",
+			summary,
+			success: state === "complete",
+			notification: { owner: "nested" as const, visibility: "owner" as const },
+		});
+
+		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, nested("generalist", "internal generalist output", "complete"));
+		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, nested("worker", "internal worker output", "failed"));
+		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, completionResult({
+			id: "root",
+			sessionId: "session-1",
+			summary: "accountable root result",
+			notification: { owner: "top-level", visibility: "owner" },
+			nestedChildren: [{
+			state: "complete",
+			children: [{ state: "failed" }],
+		}],
+		}));
+
+		assert.equal(sent.length, 1);
+		const content = (sent[0]!.message as { content: string }).content;
+		assert.match(content, /Background task failed: \*\*worker\*\*/);
+		assert.match(content, /accountable root result/);
+		assert.match(content, /nested child needs attention/);
 	});
 
 	it("emits failed completions immediately even while successes are held", () => {

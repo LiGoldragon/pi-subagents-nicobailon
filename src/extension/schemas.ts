@@ -265,6 +265,7 @@ const SubagentParamsSchema = Type.Object({
 	})),
 	chainDir: Type.Optional(Type.String({ description: "Persistent chain artifact directory; defaults to user-scoped temp storage." })),
 	async: Type.Optional(Type.Boolean({ description: "Run in background (default: false, or per config)" })),
+	notify: Type.Optional(Type.String({ enum: ["owner", "child"], description: "Completion notification visibility. Nested runs default to owner (their accountable parent); set child only when the caller explicitly wants this nested completion surfaced." })),
 	timeoutMs: Type.Optional(Type.Integer({ minimum: 1, description: "Optional run-level timeout in ms for foreground and async/background runs. Alias of maxRuntimeMs." })),
 	maxRuntimeMs: Type.Optional(Type.Integer({ minimum: 1, description: "Alias of timeoutMs for optional run-level timeout in foreground and async/background runs." })),
 	turnBudget: Type.Optional(TurnBudgetOverride),

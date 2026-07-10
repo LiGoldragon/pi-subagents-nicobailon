@@ -131,6 +131,7 @@ interface SubagentRunConfig {
 	dynamicFanoutMaxItems?: number;
 	workflowGraph?: WorkflowGraphSnapshot;
 	nestedRoute?: NestedRouteInfo;
+	notificationVisibility?: "owner" | "child";
 	nestedSelf?: { parentRunId: string; parentStepIndex?: number; depth: number; path?: Array<{ runId: string; stepIndex?: number; agent?: string }> };
 	timeoutMs?: number;
 	deadlineAt?: number;
@@ -3360,6 +3361,10 @@ async function runSubagent(config: SubagentRunConfig): Promise<void> {
 			id,
 			agent: agentName,
 			mode: resultMode,
+			notification: {
+				owner: config.nestedSelf ? "nested" : "top-level",
+				visibility: config.notificationVisibility ?? "owner",
+			},
 			success: !stopped && !timedOut && !turnBudgetExceeded && !interrupted && results.every((r) => r.success),
 			state: stopped ? "stopped" : timedOut || turnBudgetExceeded ? "failed" : interrupted ? "paused" : results.every((r) => r.success) ? "complete" : "failed",
 			summary: stopped ? stopMessage : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? (statusPayload.error ?? "Subagent exceeded turn budget.") : interrupted ? "Paused after interrupt. Waiting for explicit next action." : summary,

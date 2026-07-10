@@ -33,22 +33,26 @@ export function resolveSingleOutputPath(
 	return path.resolve(baseCwd, output);
 }
 
-function formatOutputPathInstruction(outputPath: string): string {
+function formatOutputPathInstruction(outputPath: string, canWriteOutput: boolean): string {
+	const persistenceInstruction = canWriteOutput
+		? `Write your findings to exactly this path: ${outputPath}`
+		: `Return the complete artifact in your final response. The runtime will persist it to exactly this path: ${outputPath}`;
 	return [
-		`Write your findings to exactly this path: ${outputPath}`,
+		persistenceInstruction,
 		"This path is authoritative for this run.",
+		...(canWriteOutput ? [] : ["Do not call contact_supervisor merely because this run has no write-capable tool; returning the complete artifact is sufficient."]),
 		"Ignore any other output filename or output path mentioned elsewhere, including output destinations in the base agent prompt, system prompt, or task instructions.",
 	].join("\n");
 }
 
-export function injectSingleOutputInstruction(task: string, outputPath: string | undefined): string {
+export function injectSingleOutputInstruction(task: string, outputPath: string | undefined, canWriteOutput = true): string {
 	if (!outputPath) return task;
-	return `${task}\n\n---\n**Output:**\n${formatOutputPathInstruction(outputPath)}`;
+	return `${task}\n\n---\n**Output:**\n${formatOutputPathInstruction(outputPath, canWriteOutput)}`;
 }
 
-export function injectOutputPathSystemPrompt(systemPrompt: string, outputPath: string | undefined): string {
+export function injectOutputPathSystemPrompt(systemPrompt: string, outputPath: string | undefined, canWriteOutput = true): string {
 	if (!outputPath) return systemPrompt;
-	const instruction = `Runtime output path override:\n${formatOutputPathInstruction(outputPath)}`;
+	const instruction = `Runtime output path override:\n${formatOutputPathInstruction(outputPath, canWriteOutput)}`;
 	return systemPrompt ? `${systemPrompt}\n\n${instruction}` : instruction;
 }
 

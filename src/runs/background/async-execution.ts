@@ -16,7 +16,7 @@ import { buildChainInstructions, isDynamicParallelStep, isParallelStep, resolveS
 import type { RunnerStep } from "../shared/parallel-utils.ts";
 import { resolvePiPackageRoot } from "../shared/pi-spawn.ts";
 import { buildSkillInjection, normalizeSkillInput, resolveSkillsWithFallback } from "../../agents/skills.ts";
-import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
+import { agentHasWriteTools, buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { PI_CODING_AGENT_PACKAGE_ROOT_ENV, resolveChildCwd } from "../../shared/utils.ts";
 import { buildModelCandidates, resolveModelCandidate, resolveSubagentModelOverride, type AvailableModelInfo, type ParentModel } from "../shared/model-fallback.ts";
 import type { ModelScopeConfig } from "../shared/model-scope.ts";
@@ -137,6 +137,7 @@ interface AsyncChainParams {
 	controlIntercomTarget?: string;
 	childIntercomTarget?: (agent: string, index: number) => string | undefined;
 	nestedRoute?: NestedRouteInfo;
+	notificationVisibility?: "owner" | "child";
 	acceptance?: AcceptanceInput;
 	timeoutMs?: number;
 	turnBudget?: ResolvedTurnBudget;
@@ -173,6 +174,7 @@ interface AsyncSingleParams {
 	controlIntercomTarget?: string;
 	childIntercomTarget?: (agent: string, index: number) => string | undefined;
 	nestedRoute?: NestedRouteInfo;
+	notificationVisibility?: "owner" | "child";
 	acceptance?: AcceptanceInput;
 	timeoutMs?: number;
 	turnBudget?: ResolvedTurnBudget;
@@ -445,13 +447,13 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 		if (behavior.progress) progressInstructionCreated = true;
 		const progressInstructions = buildChainInstructions({ ...behavior, output: false, reads: false }, progressDir, isFirstProgressAgent);
 		const outputPath = resolveSingleOutputPath(behavior.output, ctx.cwd, instructionCwd, outputBaseDir);
-		systemPrompt = injectOutputPathSystemPrompt(systemPrompt, outputPath);
+		systemPrompt = injectOutputPathSystemPrompt(systemPrompt, outputPath, agentHasWriteTools(a));
 		const validationError = validateFileOnlyOutputMode(behavior.outputMode, outputPath, `Async step (${s.agent})`);
 		if (validationError) throw new AsyncStartValidationError(validationError);
 		let taskTemplate = s.task ?? "{previous}";
 		taskTemplate = taskTemplate.replace(/\{task\}/g, originalTask ?? "");
 		taskTemplate = taskTemplate.replace(/\{chain_dir\}/g, runnerCwd);
-		const task = injectSingleOutputInstruction(`${readInstructions.prefix}${taskTemplate}${progressInstructions.suffix}`, outputPath);
+		const task = injectSingleOutputInstruction(`${readInstructions.prefix}${taskTemplate}${progressInstructions.suffix}`, outputPath, agentHasWriteTools(a));
 
 		const requestedModel = behavior.model ?? a.model;
 		const primaryModel = resolveSubagentModelOverride(requestedModel, ctx.currentModel, availableModels, ctx.currentModelProvider, { scope: ctx.modelScope, source: behavior.model ? "explicit" : "inherited" });
@@ -725,6 +727,7 @@ export function executeAsyncChain(
 				globalConcurrencyLimit: params.globalConcurrencyLimit,
 				workflowGraph,
 				nestedRoute: nestedRoute ?? inheritedNestedRoute,
+				notificationVisibility: params.notificationVisibility,
 				nestedSelf: inheritedNestedRoute && nestedAddress ? {
 					parentRunId: nestedAddress.parentRunId,
 					parentStepIndex: nestedAddress.parentStepIndex,
@@ -905,11 +908,11 @@ export function executeAsyncSingle(
 
 	const effectiveOutput = normalizeSingleOutputOverride(params.output, agentConfig.output);
 	const outputPath = resolveSingleOutputPath(effectiveOutput, ctx.cwd, runnerCwd, params.outputBaseDir ?? (artifactsDir ? path.join(artifactsDir, "outputs", id) : undefined));
-	systemPrompt = injectOutputPathSystemPrompt(systemPrompt, outputPath);
+	systemPrompt = injectOutputPathSystemPrompt(systemPrompt, outputPath, agentHasWriteTools(agentConfig));
 	const outputMode = params.outputMode ?? "inline";
 	const validationError = validateFileOnlyOutputMode(outputMode, outputPath, `Async single run (${agent})`);
 	if (validationError) return formatAsyncStartError("single", validationError);
-	const taskWithOutputInstruction = injectSingleOutputInstruction(task, outputPath);
+	const taskWithOutputInstruction = injectSingleOutputInstruction(task, outputPath, agentHasWriteTools(agentConfig));
 	const primaryModel = resolveSubagentModelOverride(
 		params.modelOverride ?? agentConfig.model,
 		ctx.currentModel,
@@ -987,6 +990,7 @@ export function executeAsyncSingle(
 				childIntercomTargets: childIntercomTarget ? [childIntercomTarget(agent, 0)] : undefined,
 				resultMode: "single",
 				nestedRoute: nestedRoute ?? inheritedNestedRoute,
+				notificationVisibility: params.notificationVisibility,
 				nestedSelf: inheritedNestedRoute && nestedAddress ? {
 					parentRunId: nestedAddress.parentRunId,
 					parentStepIndex: nestedAddress.parentStepIndex,

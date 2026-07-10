@@ -31,6 +31,7 @@ interface AsyncResultPayload {
 	exitCode?: number;
 	sessionId?: string;
 	mode?: string;
+	notification?: { owner?: string; visibility?: string };
 	summary?: string;
 	error?: string;
 	timeoutMs?: number;
@@ -1708,7 +1709,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const run = executeAsyncSingle(id, {
 			agent: "worker",
 			task: "Do work",
-			agentConfig: makeAgent("worker"),
+			agentConfig: makeAgent("worker", { tools: ["read", "grep", "find", "ls"] }),
 			ctx: { pi: { events: { emit() {} } }, cwd: tempDir, currentSessionId: "session-1" },
 			artifactConfig: {
 				enabled: false,
@@ -1726,6 +1727,11 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		});
 
 		assert.equal(run.details.asyncId, id);
+		const call = await waitForMockPiCall(mockPi, 0);
+		const taskArg = call.args.at(-1) ?? "";
+		assert.match(taskArg, /Return the complete artifact in your final response/);
+		assert.match(taskArg, /runtime will persist it to exactly this path/);
+		assert.doesNotMatch(taskArg, /^Write your findings to exactly this path:/m);
 		const deadline = Date.now() + 10_000;
 		while (!fs.existsSync(resultPath)) {
 			if (Date.now() > deadline) assert.fail(`Timed out waiting for async result file: ${resultPath}`);
@@ -1734,6 +1740,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 
 		const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
 		assert.equal(payload.success, true);
+		assert.deepEqual(payload.notification, { owner: "top-level", visibility: "owner" });
 		assert.match(payload.summary ?? "", /Output saved to:/);
 		assert.match(payload.summary ?? "", /2 lines/);
 		assert.doesNotMatch(payload.summary ?? "", /async full output/);
