@@ -336,7 +336,7 @@ describe("acceptance gates", () => {
 		}
 	});
 
-	it("does not make explicit checked acceptance an explicit reviewed blocker when inference recommends review", async () => {
+	it("keeps inferred reviewed acceptance strict when child evidence lacks a reviewer", async () => {
 		const cwd = tempRepo();
 		try {
 			const acceptance = resolveEffectiveAcceptance({
@@ -352,7 +352,7 @@ describe("acceptance gates", () => {
 				{ id: "criterion-1", status: "satisfied", evidence: "implemented" },
 				{ id: "criterion-2", status: "satisfied", evidence: "evidence returned" },
 			] }), cwd });
-			assert.equal(ledger.status, "checked");
+			assert.equal(ledger.status, "rejected");
 			assert.equal(ledger.reviewResult?.status, "needs-parent-decision");
 		} finally {
 			fs.rmSync(cwd, { recursive: true, force: true });

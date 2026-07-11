@@ -1313,6 +1313,8 @@ export async function runSync(
 		if (sessionFile) result.sessionFile = sessionFile;
 	}
 
+	result.processExitCode = result.exitCode;
+	result.processSuccess = result.exitCode === 0 && !result.error;
 	result.acceptance = result.detached
 		? buildSkippedAcceptanceLedger(effectiveAcceptance, { id: "detached", message: "Acceptance was not evaluated because the subagent detached for intercom coordination before task completion." })
 		: result.timedOut

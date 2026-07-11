@@ -473,6 +473,9 @@ export interface SingleResult {
 	agent: string;
 	task: string;
 	exitCode: number;
+	/** Child execution outcome before acceptance may mutate the aggregate exit contract. */
+	processExitCode?: number;
+	processSuccess?: boolean;
 	detached?: boolean;
 	detachedReason?: string;
 	interrupted?: boolean;

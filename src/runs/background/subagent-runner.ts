@@ -147,6 +147,8 @@ interface StepResult {
 	error?: string;
 	success: boolean;
 	exitCode?: number | null;
+	processExitCode?: number;
+	processSuccess?: boolean;
 	skipped?: boolean;
 	interrupted?: boolean;
 	timedOut?: boolean;
@@ -1279,6 +1281,8 @@ async function runSingleStep(
 		agent: step.agent,
 		output: outputForSummary,
 		exitCode: effectiveFinalExitCode,
+		processExitCode: finalResult?.exitCode ?? 1,
+		processSuccess: (finalResult?.exitCode ?? 1) === 0 && !finalResult?.error,
 		error: effectiveFinalError,
 		sessionFile: step.sessionFile,
 		intercomTarget: ctx.childIntercomTarget,
