@@ -186,7 +186,7 @@ describe("acceptance gates", () => {
 			commandsRun: [{ command: "npm test", exitCode: 0 }],
 		}));
 		assert.equal(invalidCommandReport.report, undefined);
-		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.result: expected one of "passed", "failed", "not-run"; got missing/);
+		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.result: expected one of "passed", "failed", "blocked", "not-run"; got missing/);
 		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.summary: expected string; got missing/);
 
 		const invalidCriteriaReport = parseAcceptanceReport(report({
@@ -196,6 +196,14 @@ describe("acceptance gates", () => {
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.id: expected string; got number 7/);
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.status: expected one of "satisfied", "not-satisfied", "not-applicable"; got "done"/);
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.evidence: expected non-empty string; got ""/);
+	});
+
+	it("accepts blocked command evidence", () => {
+		const parsed = parseAcceptanceReport(report({
+			commandsRun: [{ command: "lojix deploy", result: "blocked", summary: "waiting for required approval" }],
+		}));
+		assert.equal(parsed.error, undefined);
+		assert.equal(parsed.report?.commandsRun?.[0]?.result, "blocked");
 	});
 
 	it("explicit none disables inferred gates when a reason is present", () => {

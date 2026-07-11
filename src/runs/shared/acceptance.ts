@@ -588,8 +588,8 @@ function validateAcceptanceReport(value: unknown, pathLabel = ""): { report?: Ac
 				}
 				const command = item as { command?: unknown; result?: unknown; summary?: unknown };
 				if (typeof command.command !== "string" || !command.command.trim()) pushTypeError(errors, `${itemPath}.command`, "non-empty string", command.command);
-				if (command.result !== "passed" && command.result !== "failed" && command.result !== "not-run") {
-					pushTypeError(errors, `${itemPath}.result`, "one of \"passed\", \"failed\", \"not-run\"", command.result);
+				if (command.result !== "passed" && command.result !== "failed" && command.result !== "blocked" && command.result !== "not-run") {
+					pushTypeError(errors, `${itemPath}.result`, "one of \"passed\", \"failed\", \"blocked\", \"not-run\"", command.result);
 				}
 				if (typeof command.summary !== "string") pushTypeError(errors, `${itemPath}.summary`, "string", command.summary);
 			}
