@@ -1416,6 +1416,9 @@ export async function runSync(
 		if (sessionFile) result.sessionFile = sessionFile;
 	}
 
+	result.processExitCode = result.exitCode;
+	result.processSuccess = result.exitCode === 0 && !result.error;
+
 	const childWrittenOutput = options.outputPath
 		? extractChildWrittenOutput(result.messages, options.outputPath, options.cwd ?? runtimeCwd)
 		: undefined;

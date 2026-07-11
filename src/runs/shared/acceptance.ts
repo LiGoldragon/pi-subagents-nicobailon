@@ -1095,16 +1095,15 @@ export async function evaluateAcceptance(input: {
 			ledger.reviewResult = input.reviewResult;
 			ledger.status = input.reviewResult.status === "no-blockers" ? "reviewed" : "rejected";
 		} else {
-			const optionalReview = acceptance.review && acceptance.review !== false && acceptance.review.required === false;
 			ledger.reviewResult = {
 				status: "needs-parent-decision",
 				findings: [{
-					severity: acceptance.explicit && !optionalReview ? "blocker" : "non-blocking",
+					severity: "blocker",
 					issue: "Reviewed acceptance requires an independent reviewer result.",
 					rationale: "The run cannot be marked reviewed from child evidence alone.",
 				}],
 			};
-			if (acceptance.review === false || (acceptance.explicit && !optionalReview)) ledger.status = "rejected";
+			ledger.status = "rejected";
 		}
 	}
 
