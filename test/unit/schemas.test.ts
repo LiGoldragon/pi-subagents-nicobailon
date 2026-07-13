@@ -115,19 +115,25 @@ function getPropertySchema(schema: JsonSchemaNode | undefined, path: string[]): 
 	let current: unknown = schema;
 	for (const key of path) {
 		if (!current || typeof current !== "object") return undefined;
-		current = (current as JsonSchemaNode).properties;
-		if (!current || typeof current !== "object") return undefined;
-		current = (current as Record<string, unknown>)[key];
+		if (key === "items") {
+			current = (current as JsonSchemaNode).items;
+			continue;
+		}
+		const properties = (current as JsonSchemaNode).properties;
+		if (!properties || typeof properties !== "object") return undefined;
+		current = (properties as Record<string, unknown>)[key];
 	}
 	return current && typeof current === "object" ? current as JsonSchemaNode : undefined;
 }
 
 let schemas: Record<string, JsonSchemaNode> = {};
 let SubagentParams: SubagentParamsSchema | undefined;
+let FullSubagentParams: SubagentParamsSchema | undefined;
 let schemasAvailable = true;
 try {
 	schemas = await import("../../src/extension/schemas.ts") as Record<string, JsonSchemaNode>;
 	SubagentParams = schemas.SubagentParams as SubagentParamsSchema;
+	FullSubagentParams = schemas.FullSubagentParams as SubagentParamsSchema;
 } catch (error) {
 	if (missingPackageName(error) !== "typebox") throw error;
 	schemasAvailable = false;
@@ -258,18 +264,28 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.deepEqual(controlSchema.properties?.notifyChannels?.items?.enum, ["event", "async", "intercom"]);
 	});
 
-	it("substantially reduces the default rendered model-facing context", () => {
+	it("bounds compact rendered context by bytes while preserving safety descriptions", () => {
 		assert.ok(SubagentParams, "SubagentParams schema should exist");
-		const schema = JSON.stringify(SubagentParams);
-		const defaultContext = `${buildSubagentToolDescription()}\n${schema}`;
-		const fullContext = `${FULL_SUBAGENT_TOOL_DESCRIPTION}\n${schema}`;
-		const defaultBytes = new TextEncoder().encode(defaultContext).length;
+		assert.ok(FullSubagentParams, "FullSubagentParams schema should exist");
+		const compactContext = `${buildSubagentToolDescription()}\n${JSON.stringify(SubagentParams)}`;
+		const fullContext = `${FULL_SUBAGENT_TOOL_DESCRIPTION}\n${JSON.stringify(FullSubagentParams)}`;
+		const compactBytes = new TextEncoder().encode(compactContext).length;
 		const fullBytes = new TextEncoder().encode(fullContext).length;
-		const defaultTokens = Math.ceil(defaultContext.length / 4);
-		const fullTokens = Math.ceil(fullContext.length / 4);
 
-		assert.ok(defaultBytes < fullBytes * 0.75, `expected default context to be at least 25% smaller: ${defaultBytes} vs ${fullBytes} bytes`);
-		assert.ok(defaultTokens < fullTokens * 0.75, `expected default context to be at least 25% smaller: ${defaultTokens} vs ${fullTokens} estimated tokens`);
+		assert.ok(compactBytes <= 16_000, `expected compact context within the 16KB regression bound, got ${compactBytes} bytes`);
+		assert.ok(compactBytes < fullBytes, `expected compact context to remain smaller: ${compactBytes} vs ${fullBytes} bytes`);
+	});
+
+	it("keeps complete nested parameter guidance for explicit full and custom modes", () => {
+		assert.ok(SubagentParams, "SubagentParams schema should exist");
+		assert.ok(FullSubagentParams, "FullSubagentParams schema should exist");
+		const compactTaskOutputMode = getPropertySchema(SubagentParams as unknown as JsonSchemaNode, ["tasks", "items", "outputMode"]);
+		const fullTaskOutputMode = getPropertySchema(FullSubagentParams as unknown as JsonSchemaNode, ["tasks", "items", "outputMode"]);
+		const fullControlNotifyChannels = getPropertySchema(FullSubagentParams as unknown as JsonSchemaNode, ["control", "notifyChannels"]);
+
+		assert.equal(compactTaskOutputMode?.description, undefined);
+		assert.match(String(fullTaskOutputMode?.description ?? ""), /file-only requires output/i);
+		assert.match(String(fullControlNotifyChannels?.description ?? ""), /Notification channels/i);
 	});
 
 	it("does not emit description-only schema nodes", () => {

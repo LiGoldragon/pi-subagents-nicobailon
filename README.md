@@ -1207,9 +1207,9 @@ After a worktree parallel step completes, per-agent diff stats are appended to t
 { "toolDescriptionMode": "compact" }
 ```
 
-Controls the parent-facing `subagent` tool description registered at startup. `compact` is the default and keeps execution modes, opt-in budget policy, async/wait guidance, the child-safety boundary, management/action split, one-writer review guidance, and artifact/status essentials without a full reference manual in every turn. Set `full` only when its exhaustive reference is deliberately needed.
+Controls the parent-facing `subagent` tool description registered at startup. `compact` is the default and keeps execution modes, opt-in budget policy, async/wait guidance, the child-safety boundary, management/action split, one-writer review guidance, and artifact/status essentials without a full reference manual in every turn. Its parameter schema retains safety-critical watchdog scope, notification routing, and control guidance. Set `full` only when its exhaustive reference and complete parameter descriptions are deliberately needed.
 
-`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the compact description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
+`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. A valid custom mode retains the complete parameter descriptions; missing, empty, unreadable, or oversized custom files fall back to the compact description and schema. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
 
 ### `asyncByDefault`
 

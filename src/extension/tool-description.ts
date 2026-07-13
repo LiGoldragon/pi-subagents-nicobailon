@@ -192,14 +192,21 @@ function withMandatorySafetyGuidance(description: string): string {
 		: SUBAGENT_SAFETY_GUIDANCE;
 }
 
-export function buildSubagentToolDescription(config: Pick<ExtensionConfig, "toolDescriptionMode"> = {}, options?: ToolDescriptionOptions): string {
+export interface ResolvedSubagentToolDescription {
+	mode: ToolDescriptionMode;
+	description: string;
+}
+
+export function resolveSubagentToolDescription(config: Pick<ExtensionConfig, "toolDescriptionMode"> = {}, options?: ToolDescriptionOptions): ResolvedSubagentToolDescription {
 	const mode = resolveToolDescriptionMode(config, options);
-	if (mode === "compact") return COMPACT_SUBAGENT_TOOL_DESCRIPTION;
-	if (mode === "full") return FULL_SUBAGENT_TOOL_DESCRIPTION;
-	if (mode === "custom") {
-		const custom = loadCustomToolDescription(options);
-		if (custom) return withMandatorySafetyGuidance(custom);
-		warn(options, `${CUSTOM_TOOL_DESCRIPTION_FILE} was not found or valid for toolDescriptionMode "custom"; using compact description.`);
-	}
-	return COMPACT_SUBAGENT_TOOL_DESCRIPTION;
+	if (mode === "compact") return { mode, description: COMPACT_SUBAGENT_TOOL_DESCRIPTION };
+	if (mode === "full") return { mode, description: FULL_SUBAGENT_TOOL_DESCRIPTION };
+	const custom = loadCustomToolDescription(options);
+	if (custom) return { mode, description: withMandatorySafetyGuidance(custom) };
+	warn(options, `${CUSTOM_TOOL_DESCRIPTION_FILE} was not found or valid for toolDescriptionMode "custom"; using compact description.`);
+	return { mode: "compact", description: COMPACT_SUBAGENT_TOOL_DESCRIPTION };
+}
+
+export function buildSubagentToolDescription(config: Pick<ExtensionConfig, "toolDescriptionMode"> = {}, options?: ToolDescriptionOptions): string {
+	return resolveSubagentToolDescription(config, options).description;
 }

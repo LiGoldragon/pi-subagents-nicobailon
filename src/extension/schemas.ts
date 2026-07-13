@@ -3,6 +3,7 @@
  */
 
 import { Type } from "typebox";
+import type { ToolDescriptionMode } from "../shared/types.ts";
 
 function keepTopLevelParameterDescriptions<T>(schema: T): T {
 	return pruneNestedDescriptions(schema, []) as T;
@@ -25,32 +26,43 @@ function pruneNestedDescriptions(value: unknown, path: string[]): unknown {
 	return result;
 }
 
-const MODEL_FACING_PARAMETER_DESCRIPTIONS = new Set([
+const COMPACT_MODEL_FACING_PARAMETER_DESCRIPTIONS = new Set([
 	"acceptance",
 	"action",
 	"agent",
 	"async",
 	"chain",
+	"clarify",
 	"concurrency",
+	"config",
 	"context",
 	"control",
 	"dir",
 	"id",
+	"index",
 	"lines",
 	"maxRuntimeMs",
+	"message",
+	"notify",
+	"output",
+	"outputMode",
 	"runId",
+	"scope",
+	"target",
 	"task",
 	"tasks",
+	"thinking",
 	"timeoutMs",
 	"toolBudget",
 	"turnBudget",
 	"view",
+	"worktree",
 ]);
 
 function isTopLevelParameterDescription(path: string[]): boolean {
 	return path.length === 2
 		&& path[0] === "properties"
-		&& MODEL_FACING_PARAMETER_DESCRIPTIONS.has(path[1] ?? "");
+		&& COMPACT_MODEL_FACING_PARAMETER_DESCRIPTIONS.has(path[1] ?? "");
 }
 
 const SkillOverride = Type.Unsafe({
@@ -319,7 +331,16 @@ const SubagentParamsSchema = Type.Object({
 	acceptance: Type.Optional(AcceptanceOverride),
 });
 
-export const SubagentParams = keepTopLevelParameterDescriptions(SubagentParamsSchema);
+export function buildSubagentParams(mode: ToolDescriptionMode | undefined = "compact") {
+	return mode === "full" || mode === "custom"
+		? SubagentParamsSchema
+		: keepTopLevelParameterDescriptions(SubagentParamsSchema);
+}
+
+/** Compact schema for ordinary parent and child-safe fanout registration. */
+export const SubagentParams = buildSubagentParams();
+/** Complete schema for explicit full/custom parent registrations. */
+export const FullSubagentParams = buildSubagentParams("full");
 
 const WaitParamsSchema = Type.Object({
 	id: Type.Optional(Type.String({

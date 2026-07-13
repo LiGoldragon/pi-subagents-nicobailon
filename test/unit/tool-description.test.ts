@@ -172,7 +172,7 @@ describe("registered subagent tool description", () => {
 		assert.ok(warnings.some((message) => message.includes("Ignoring invalid toolDescriptionMode")));
 	});
 
-	function readRegisteredDescription(agentDir: string): string {
+	function readRegisteredTool(agentDir: string): { description: string; parameters: Record<string, unknown> } {
 		const script = String.raw`
 			import registerSubagentExtension from "./src/extension/index.ts";
 			const events = { on() { return () => {}; }, emit() {} };
@@ -193,7 +193,7 @@ describe("registered subagent tool description", () => {
 			});
 			registerSubagentExtension(fakePi);
 			if (!registeredTool) throw new Error("tool not registered");
-			process.stdout.write(JSON.stringify(registeredTool.description));
+			process.stdout.write(JSON.stringify({ description: registeredTool.description, parameters: registeredTool.parameters }));
 		`;
 		const output = execFileSync(
 			process.execPath,
@@ -207,7 +207,11 @@ describe("registered subagent tool description", () => {
 			],
 			{ cwd: projectRoot, env: parentToolEnv(agentDir), encoding: "utf-8" },
 		);
-		return JSON.parse(output) as string;
+		return JSON.parse(output) as { description: string; parameters: Record<string, unknown> };
+	}
+
+	function readRegisteredDescription(agentDir: string): string {
+		return readRegisteredTool(agentDir).description;
 	}
 
 	function writeExtensionConfig(agentDir: string, config: Record<string, unknown>): void {
@@ -215,6 +219,40 @@ describe("registered subagent tool description", () => {
 		fs.mkdirSync(configDir, { recursive: true });
 		fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify(config), "utf-8");
 	}
+
+	it("registers mode-aware parameter schemas with compact safety and full/custom reference guidance", () => {
+		type Parameter = { description?: string; properties?: Record<string, Parameter>; items?: { properties?: Record<string, Parameter> } };
+		const propertiesOf = (parameters: Record<string, unknown>): Record<string, Parameter> => {
+			const properties = parameters.properties;
+			assert.ok(properties && typeof properties === "object");
+			return properties as Record<string, Parameter>;
+		};
+
+		const compactAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-schema-compact-"));
+		const compactProperties = propertiesOf(readRegisteredTool(compactAgentDir).parameters);
+		for (const field of ["scope", "notify", "index", "message", "clarify", "config", "worktree", "outputMode"]) {
+			assert.match(String(compactProperties[field]?.description ?? ""), /.+/, `compact schema should describe ${field}`);
+		}
+		assert.match(String(compactProperties.scope?.description ?? ""), /session.*persistent/i);
+		assert.match(String(compactProperties.notify?.description ?? ""), /owner.*child/i);
+		assert.match(String(compactProperties.index?.description ?? ""), /child.*transcript/i);
+		assert.match(String(compactProperties.message?.description ?? ""), /resume.*steer/i);
+
+		const fullAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-schema-full-"));
+		writeExtensionConfig(fullAgentDir, { toolDescriptionMode: "full" });
+		const fullProperties = propertiesOf(readRegisteredTool(fullAgentDir).parameters);
+		assert.match(String(fullProperties.tasks?.items?.properties?.outputMode?.description ?? ""), /file-only requires output/i);
+		assert.match(String(fullProperties.control?.properties?.notifyChannels?.description ?? ""), /Notification channels/i);
+
+		const customAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-schema-custom-"));
+		writeExtensionConfig(customAgentDir, { toolDescriptionMode: "custom" });
+		fs.writeFileSync(path.join(customAgentDir, "subagent-tool-description.md"), "Custom schema mode.", "utf-8");
+		const customTool = readRegisteredTool(customAgentDir);
+		const customProperties = propertiesOf(customTool.parameters);
+		assert.match(customTool.description, /Custom schema mode/);
+		assert.match(String(customProperties.tasks?.items?.properties?.outputMode?.description ?? ""), /file-only requires output/i);
+		assert.match(String(customProperties.scope?.description ?? ""), /persistent settings writes/i);
+	});
 
 	it("registers compact default plus full, compact, custom, and fallback descriptions from extension config", () => {
 		const defaultAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-default-"));
@@ -237,7 +275,9 @@ describe("registered subagent tool description", () => {
 
 		const missingCustomAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-missing-"));
 		writeExtensionConfig(missingCustomAgentDir, { toolDescriptionMode: "custom" });
-		assert.equal(readRegisteredDescription(missingCustomAgentDir), COMPACT_SUBAGENT_TOOL_DESCRIPTION);
+		const missingCustomTool = readRegisteredTool(missingCustomAgentDir);
+		assert.equal(missingCustomTool.description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
+		assert.equal((missingCustomTool.parameters.properties as { tasks?: { items?: { properties?: { outputMode?: { description?: string } } } } } | undefined)?.tasks?.items?.properties?.outputMode?.description, undefined);
 
 		const invalidAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-desc-invalid-"));
 		writeExtensionConfig(invalidAgentDir, { toolDescriptionMode: "tiny" });
