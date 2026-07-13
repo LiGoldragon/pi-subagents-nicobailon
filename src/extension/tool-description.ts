@@ -22,7 +22,7 @@ EXECUTION (use exactly ONE mode):
 • CHAIN: { chain: [{agent:"agent-a"}, {parallel:[{agent:"agent-b",count:3}]}] } - sequential pipeline with optional parallel fan-out
 • PARALLEL: { tasks: [{agent,task,count?,output?,reads?,progress?}, ...], concurrency?: number, worktree?: true } - concurrent execution (worktree: isolate each task in a git worktree)
 • Optional context: { context: "fresh" | "fork" } (explicit value overrides every child; when omitted, each requested agent uses its own defaultContext, otherwise "fresh"; inspect agent defaults via { action: "list" })
-• Optional timeout: { timeoutMs } or { maxRuntimeMs } sets a run-level max runtime for foreground and async/background runs
+• Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. timeoutMs and maxRuntimeMs are run-level aliases.
 • If { action: "list" } shows proactive skill subagent suggestions, consider a small fresh-context fanout for broad tasks where one of those skills would materially help
 
 CHAIN TEMPLATE VARIABLES (use in task strings):
@@ -73,7 +73,8 @@ export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate to subagents or manag
 EXECUTE:
 • Before execution, call { action: "list" }; run only executable/non-disabled configured agents/chains.
 • SINGLE {agent, task?}; PARALLEL {tasks:[{agent,task,count?,output?,reads?,progress?}], concurrency?, worktree?}; CHAIN {chain:[{agent,task?},{parallel:[...]}]}.
-• context can be "fresh" or "fork"; omitted uses each agent defaultContext, otherwise fresh. timeoutMs/maxRuntimeMs apply to foreground and async/background runs.
+• context can be "fresh" or "fork"; omitted uses each agent defaultContext, otherwise fresh.
+• Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns.
 • Chain templates may use {task}, {previous}, {chain_dir}, and named outputs. Parallel worktree isolation requires a clean git repo.
 • If list shows proactive skill subagent suggestions, use a small fresh-context fanout only when the task is broad enough.
 
@@ -106,10 +107,10 @@ export interface ToolDescriptionOptions {
 
 export function resolveToolDescriptionMode(config: Pick<ExtensionConfig, "toolDescriptionMode">, options?: ToolDescriptionOptions): ToolDescriptionMode {
 	const mode = config.toolDescriptionMode;
-	if (mode === undefined) return "full";
+	if (mode === undefined) return "compact";
 	if (isToolDescriptionMode(mode)) return mode;
 	warn(options, `Ignoring invalid toolDescriptionMode ${JSON.stringify(mode)}; expected "full", "compact", or "custom".`);
-	return "full";
+	return "compact";
 }
 
 function customDescriptionPaths(options?: ToolDescriptionOptions): string[] {
@@ -194,10 +195,11 @@ function withMandatorySafetyGuidance(description: string): string {
 export function buildSubagentToolDescription(config: Pick<ExtensionConfig, "toolDescriptionMode"> = {}, options?: ToolDescriptionOptions): string {
 	const mode = resolveToolDescriptionMode(config, options);
 	if (mode === "compact") return COMPACT_SUBAGENT_TOOL_DESCRIPTION;
+	if (mode === "full") return FULL_SUBAGENT_TOOL_DESCRIPTION;
 	if (mode === "custom") {
 		const custom = loadCustomToolDescription(options);
 		if (custom) return withMandatorySafetyGuidance(custom);
-		warn(options, `${CUSTOM_TOOL_DESCRIPTION_FILE} was not found or valid for toolDescriptionMode "custom"; using full description.`);
+		warn(options, `${CUSTOM_TOOL_DESCRIPTION_FILE} was not found or valid for toolDescriptionMode "custom"; using compact description.`);
 	}
-	return FULL_SUBAGENT_TOOL_DESCRIPTION;
+	return COMPACT_SUBAGENT_TOOL_DESCRIPTION;
 }

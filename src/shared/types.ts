@@ -1029,7 +1029,7 @@ export interface ScheduledRunsConfig {
 
 export interface ExtensionConfig {
 	asyncByDefault?: boolean;
-	/** Tool description variant registered for the parent-facing subagent tool. Defaults to full. */
+	/** Tool description variant registered for the parent-facing subagent tool. Defaults to compact. */
 	toolDescriptionMode?: ToolDescriptionMode;
 	forceTopLevelAsync?: boolean;
 	waitTool?: WaitToolConfig;

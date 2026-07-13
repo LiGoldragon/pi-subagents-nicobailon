@@ -25,8 +25,32 @@ function pruneNestedDescriptions(value: unknown, path: string[]): unknown {
 	return result;
 }
 
+const MODEL_FACING_PARAMETER_DESCRIPTIONS = new Set([
+	"acceptance",
+	"action",
+	"agent",
+	"async",
+	"chain",
+	"concurrency",
+	"context",
+	"control",
+	"dir",
+	"id",
+	"lines",
+	"maxRuntimeMs",
+	"runId",
+	"task",
+	"tasks",
+	"timeoutMs",
+	"toolBudget",
+	"turnBudget",
+	"view",
+]);
+
 function isTopLevelParameterDescription(path: string[]): boolean {
-	return path.length === 2 && path[0] === "properties";
+	return path.length === 2
+		&& path[0] === "properties"
+		&& MODEL_FACING_PARAMETER_DESCRIPTIONS.has(path[1] ?? "");
 }
 
 const SkillOverride = Type.Unsafe({
@@ -77,7 +101,7 @@ const AcceptanceOverride = Type.Unsafe({
 const TurnBudgetOverride = Type.Object({
 	maxTurns: Type.Integer({ minimum: 1 }),
 	graceTurns: Type.Optional(Type.Integer({ minimum: 0 })),
-}, { additionalProperties: false, description: "Optional assistant-turn budget. At maxTurns the child is asked to wrap up; after graceTurns additional assistant turns it is aborted and partial output is returned." });
+}, { additionalProperties: false, description: "Opt-in assistant-turn budget. Omit in normal dispatch; set only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. At maxTurns the child is asked to wrap up; after graceTurns it is aborted and partial output is returned." });
 
 const ToolBudgetBlock = Type.Unsafe({
 	anyOf: [
@@ -90,7 +114,7 @@ const ToolBudgetOverride = Type.Object({
 	soft: Type.Optional(Type.Integer({ minimum: 1 })),
 	hard: Type.Integer({ minimum: 1 }),
 	block: Type.Optional(ToolBudgetBlock),
-}, { additionalProperties: false, description: "Optional child tool-call budget. soft nudges the child; after hard, block tools (default read/grep/find/ls, or '*' for all tools) are blocked so the child can finalize." });
+}, { additionalProperties: false, description: "Opt-in child tool-call budget. Omit in normal dispatch; set only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. soft nudges; after hard, configured tools are blocked so the child can finalize." });
 
 const TaskItem = Type.Object({
 	agent: Type.String(), 
@@ -266,8 +290,8 @@ const SubagentParamsSchema = Type.Object({
 	chainDir: Type.Optional(Type.String({ description: "Persistent chain artifact directory; defaults to user-scoped temp storage." })),
 	async: Type.Optional(Type.Boolean({ description: "Run in background (default: false, or per config)" })),
 	notify: Type.Optional(Type.String({ enum: ["owner", "child"], description: "Completion notification visibility. Nested runs default to owner (their accountable parent); set child only when the caller explicitly wants this nested completion surfaced." })),
-	timeoutMs: Type.Optional(Type.Integer({ minimum: 1, description: "Optional run-level timeout in ms for foreground and async/background runs. Alias of maxRuntimeMs." })),
-	maxRuntimeMs: Type.Optional(Type.Integer({ minimum: 1, description: "Alias of timeoutMs for optional run-level timeout in foreground and async/background runs." })),
+	timeoutMs: Type.Optional(Type.Integer({ minimum: 1, description: "Opt-in run deadline in ms for foreground and async/background runs. Omit in normal dispatch; set only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. Alias of maxRuntimeMs." })),
+	maxRuntimeMs: Type.Optional(Type.Integer({ minimum: 1, description: "Alias of timeoutMs for an opt-in run deadline. Omit in normal dispatch; use only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns." })),
 	turnBudget: Type.Optional(TurnBudgetOverride),
 	toolBudget: Type.Optional(ToolBudgetOverride),
 	agentScope: Type.Optional(Type.String({ description: "Agent discovery scope: 'user', 'project', or 'both' (default: 'both'; project wins on name collisions)" })),

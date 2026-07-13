@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { buildSubagentToolDescription, FULL_SUBAGENT_TOOL_DESCRIPTION } from "../../src/extension/tool-description.ts";
 
 type JsonSchemaNode = Record<string, unknown>;
 
@@ -186,7 +187,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.doesNotMatch(description, /orchestration\./);
 	});
 
-	it("includes foreground timeout aliases and turn budget", () => {
+	it("keeps budget APIs compatible but marks them opt-in", () => {
 		const timeoutSchema = SubagentParams?.properties?.timeoutMs;
 		const maxRuntimeSchema = SubagentParams?.properties?.maxRuntimeMs;
 		const turnBudgetSchema = SubagentParams?.properties?.turnBudget;
@@ -195,10 +196,16 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.ok(maxRuntimeSchema, "maxRuntimeMs schema should exist");
 		assert.equal(timeoutSchema.minimum, 1);
 		assert.equal(maxRuntimeSchema.minimum, 1);
+		for (const schema of [timeoutSchema, maxRuntimeSchema, turnBudgetSchema, toolBudgetSchema]) {
+			const description = String(schema?.description ?? "");
+			assert.match(description, /opt-in/i);
+			assert.match(description, /Omit in normal dispatch/i);
+			assert.match(description, /explicit user request or concrete external constraint/i);
+			assert.match(description, /never speculative cost\/runaway concerns/i);
+		}
 		assert.match(String(timeoutSchema.description ?? ""), /foreground and async\/background/i);
 		assert.doesNotMatch(String(timeoutSchema.description ?? ""), /foreground-only/i);
 		assert.match(String(maxRuntimeSchema.description ?? ""), /timeoutMs/i);
-		assert.match(String(maxRuntimeSchema.description ?? ""), /foreground and async\/background/i);
 		assert.equal(turnBudgetSchema?.properties?.maxTurns?.minimum, 1);
 		assert.equal(turnBudgetSchema?.properties?.graceTurns?.minimum, 0);
 		assert.equal(toolBudgetSchema?.properties?.soft?.minimum, 1);
@@ -249,6 +256,20 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(controlSchema.properties?.failedToolAttemptsBeforeAttention?.minimum, 1);
 		assert.deepEqual(controlSchema.properties?.notifyOn?.items?.enum, ["active_long_running", "needs_attention"]);
 		assert.deepEqual(controlSchema.properties?.notifyChannels?.items?.enum, ["event", "async", "intercom"]);
+	});
+
+	it("substantially reduces the default rendered model-facing context", () => {
+		assert.ok(SubagentParams, "SubagentParams schema should exist");
+		const schema = JSON.stringify(SubagentParams);
+		const defaultContext = `${buildSubagentToolDescription()}\n${schema}`;
+		const fullContext = `${FULL_SUBAGENT_TOOL_DESCRIPTION}\n${schema}`;
+		const defaultBytes = new TextEncoder().encode(defaultContext).length;
+		const fullBytes = new TextEncoder().encode(fullContext).length;
+		const defaultTokens = Math.ceil(defaultContext.length / 4);
+		const fullTokens = Math.ceil(fullContext.length / 4);
+
+		assert.ok(defaultBytes < fullBytes * 0.75, `expected default context to be at least 25% smaller: ${defaultBytes} vs ${fullBytes} bytes`);
+		assert.ok(defaultTokens < fullTokens * 0.75, `expected default context to be at least 25% smaller: ${defaultTokens} vs ${fullTokens} estimated tokens`);
 	});
 
 	it("does not emit description-only schema nodes", () => {

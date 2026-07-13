@@ -8,6 +8,8 @@
 - Added an opt-in read-only subagent watchdog that reviews actual repo edits at safe agent-end boundaries, with visible warnings, main and child watchdog coordination, strong complementary model recommendations, changed-file TypeScript/JavaScript LSP diagnostics, `/subagents-watchdog` status/model commands, and agent-facing watchdog configuration actions. Thanks to can1357/oh-my-pi for the advisor/watchdog concept, and to apmantza/pi-lens, gjczone/pi-shazam, and can1357/oh-my-pi for LSP diagnostics patterns.
 
 ### Changed
+- Default the parent-facing `subagent` tool description to compact mode, preserving `full` and `custom` as explicit compatibility modes. Budget controls now state that normal dispatch omits them and permits them only for explicit user requests or concrete external constraints, not speculative cost/runaway concerns.
+- Slim the parent-only `pi-subagents` skill to an operational contract; its detailed command and workflow reference now loads on demand from `skills/pi-subagents/reference.md`.
 - Updated the bundled `pi-subagents` skill so Fable mode is the default orchestration posture for complex work, and refreshed recent command/config guidance.
 - Documented `contact_supervisor` structured interview requests in the default child bridge instructions.
 

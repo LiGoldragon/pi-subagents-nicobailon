@@ -1118,9 +1118,9 @@ Agent definitions are not loaded into context by default. Management actions let
 | `clarify` | boolean | false | Show TUI preview/edit flow. Explicit `clarify: true` keeps the run foreground for the clarify UI. |
 | `agentScope` | `user \| project \| both` | `both` | Agent discovery scope. Project wins on collisions. |
 | `async` | boolean | false | Background execution. For chains, `clarify: true` explicitly keeps the run foreground for the clarify UI. |
-| `timeoutMs` / `maxRuntimeMs` | number | none | Optional run-level max runtime in milliseconds for foreground and async/background runs. |
-| `turnBudget` | object | none | Optional assistant-turn budget `{ maxTurns, graceTurns }`. At `maxTurns` the child is warned to wrap up; after `graceTurns` (default 1) more assistant turns the run is aborted and partial output is returned. |
-| `toolBudget` | object | none | Optional child tool-call budget `{ soft?, hard, block? }`. At `soft` the child is nudged to finalize. After `hard`, configured tools are blocked; `block` defaults to `read`, `grep`, `find`, and `ls`, or use `"*"` to block every tool call. Final assistant text is never blocked. |
+| `timeoutMs` / `maxRuntimeMs` | number | none | Opt-in run deadline in milliseconds for foreground and async/background runs. Omit normally; set only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. |
+| `turnBudget` | object | none | Opt-in assistant-turn budget `{ maxTurns, graceTurns }`. Omit normally; use only for an explicit user request or concrete external constraint. At `maxTurns` the child is warned to wrap up; after `graceTurns` (default 1) more assistant turns the run is aborted and partial output is returned. |
+| `toolBudget` | object | none | Opt-in child tool-call budget `{ soft?, hard, block? }`. Omit normally; use only for an explicit user request or concrete external constraint. At `soft` the child is nudged to finalize. After `hard`, configured tools are blocked; `block` defaults to `read`, `grep`, `find`, and `ls`, or use `"*"` to block every tool call. Final assistant text is never blocked. |
 | `cwd` | string | runtime cwd | Override working directory. |
 | `maxOutput` | object | 200KB, 5000 lines | Final output truncation limits. |
 | `artifacts` | boolean | true | Write debug artifacts. |
@@ -1207,9 +1207,9 @@ After a worktree parallel step completes, per-agent diff stats are appended to t
 { "toolDescriptionMode": "compact" }
 ```
 
-Controls the parent-facing `subagent` tool description registered at startup. `full` is the default. `compact` keeps the execution modes, async/wait guidance, child-safety boundary, management/action split, one-writer review guidance, and artifact/status essentials with less prompt bloat.
+Controls the parent-facing `subagent` tool description registered at startup. `compact` is the default and keeps execution modes, opt-in budget policy, async/wait guidance, the child-safety boundary, management/action split, one-writer review guidance, and artifact/status essentials without a full reference manual in every turn. Set `full` only when its exhaustive reference is deliberately needed.
 
-`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the full description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
+`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the compact description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
 
 ### `asyncByDefault`
 
