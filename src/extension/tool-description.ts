@@ -7,7 +7,7 @@ const CUSTOM_TOOL_DESCRIPTION_FILE = "subagent-tool-description.md";
 const CUSTOM_TOOL_DESCRIPTION_MAX_BYTES = 50 * 1024;
 
 export const SUBAGENT_SAFETY_GUIDANCE = `SAFETY-CRITICAL SUBAGENT GUIDANCE:
-• Use { action: "list" } before execution and only run executable/non-disabled agents or chains.
+• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action: "list" } only for diagnostics, configuration changes, or unknown-role recovery.
 • Keep execution and management separate: omit action for SINGLE/PARALLEL/CHAIN execution; use action only for list/get/models/create/update/delete/status/interrupt/stop/resume/append-step/doctor.
 • Async/background runs: launch with async:true only when work can proceed independently. Do not sleep or poll status just to wait; if this turn must block, use the wait tool. Otherwise continue useful work or respond and let completion notifications arrive.
 • Child-safety boundary: ordinary child subagents are not orchestrators and must not run subagents. Only explicitly configured fanout children may use the child-safe subagent tool, still bounded by depth/session limits.
@@ -17,13 +17,13 @@ export const SUBAGENT_SAFETY_GUIDANCE = `SAFETY-CRITICAL SUBAGENT GUIDANCE:
 export const FULL_SUBAGENT_TOOL_DESCRIPTION = `Delegate to subagents or manage agent definitions.
 
 EXECUTION (use exactly ONE mode):
-• Before executing, use { action: "list" } to inspect configured agents/chains. Only execute agents listed as executable/non-disabled.
+• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action: "list" } only for diagnostics, configuration changes, or unknown-role recovery.
 • SINGLE: { agent, task? } - one task; omit task for self-contained agents
 • CHAIN: { chain: [{agent:"agent-a"}, {parallel:[{agent:"agent-b",count:3}]}] } - sequential pipeline with optional parallel fan-out
 • PARALLEL: { tasks: [{agent,task,count?,output?,reads?,progress?}, ...], concurrency?: number, worktree?: true } - concurrent execution (worktree: isolate each task in a git worktree)
-• Optional context: { context: "fresh" | "fork" } (explicit value overrides every child; when omitted, each requested agent uses its own defaultContext, otherwise "fresh"; inspect agent defaults via { action: "list" })
+• Optional context: { context: "fresh" | "fork" } (explicit value overrides every child; when omitted, each requested agent uses its own defaultContext, otherwise "fresh")
 • Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. timeoutMs and maxRuntimeMs are run-level aliases.
-• If { action: "list" } shows proactive skill subagent suggestions, consider a small fresh-context fanout for broad tasks where one of those skills would materially help
+• When proactive skill subagent suggestions are available, consider a small fresh-context fanout for broad tasks where one of those skills would materially help
 
 CHAIN TEMPLATE VARIABLES (use in task strings):
 • {task} - The original task/request from the user
@@ -33,7 +33,7 @@ CHAIN TEMPLATE VARIABLES (use in task strings):
 Example: { chain: [{agent:"agent-a", task:"Analyze {task}"}, {agent:"agent-b", task:"Plan based on {previous}"}] }
 
 MANAGEMENT (use action field, omit agent/task/chain/tasks):
-• { action: "list" } - discover executable agents/chains
+• { action: "list" } - inspect configured agents/chains after configuration changes, for diagnostics, or during unknown-role recovery
 • { action: "get", agent: "name" } - full detail; packaged agents use dotted runtime names like "package.agent"
 • { action: "models", agent?: "name" } - show the runtime-loaded builtin subagent model mapping, optionally filtered to one builtin
 • { action: "watchdog.status" | "watchdog.check" | "watchdog.recommend-model" } - inspect the opt-in subagent watchdog and its strong complementary model recommendation
@@ -71,10 +71,10 @@ ${SUBAGENT_SAFETY_GUIDANCE}`;
 export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate focused work to configured subagents. Use exactly one mode per call.
 
 EXECUTE:
-• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action:"list" } for discovery, diagnostics, or after configuration changes.
+• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action:"list" } only for diagnostics, configuration changes, or unknown-role recovery.
 • SINGLE {agent, task?}; PARALLEL {tasks:[{agent,task,count?,output?,reads?,progress?}], concurrency?, worktree?}; CHAIN {chain:[{agent,task?},{parallel:[...]}]}.
 • context is "fresh" or "fork"; omitted uses each role defaultContext, otherwise fresh. Budgets are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget.
-• Chain templates may use {task}, {previous}, {chain_dir}, and named outputs. Worktree isolation requires a clean git repo.
+• Chain templates may use {task}, {previous}, {chain_dir}, and named outputs. Worktrees require clean git repos.
 
 CONTROL:
 • Use action without execution fields. Common actions: list, get, status, interrupt, stop, resume, steer, append-step, doctor.

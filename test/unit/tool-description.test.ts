@@ -19,6 +19,13 @@ function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function assertKnownRolesDispatchDirectly(surface: string): void {
+	assert.match(surface, /Dispatch known configured roles directly/i);
+	assert.match(surface, /Use\s+`?\{\s*action:\s*"list"\s*\}`?\s+only\s+for\s+diagnostics,\s+configuration changes,\s+or unknown-role recovery/i);
+	assert.doesNotMatch(surface, /Call\s+`?\{\s*action:\s*"list"\s*\}`?\s+before execution/i);
+	assert.doesNotMatch(surface, /Before executing, use\s+`?\{\s*action:\s*"list"\s*\}`?/i);
+}
+
 function parentToolEnv(agentDir?: string): NodeJS.ProcessEnv {
 	const env = { ...process.env };
 	delete env[SUBAGENT_CHILD_ENV];
@@ -34,8 +41,8 @@ describe("registered subagent tool description", () => {
 		for (const builtinName of ["scout", "worker", "planner"]) {
 			assert.doesNotMatch(description, new RegExp(`\\b${builtinName}\\b`));
 		}
-		assert.match(description, /use \{ action: "list" \} to inspect configured agents\/chains/i);
-		assert.match(description, /executable\/non-disabled/i);
+		assertKnownRolesDispatchDirectly(description);
+		assert.match(description, /runtime rejects unknown or disabled names/i);
 		assert.match(description, /proactive skill subagent suggestions/i);
 		assert.doesNotMatch(description, /disabled builtins/i);
 		assert.match(description, /output\?,reads\?,progress\?/i);
@@ -69,8 +76,7 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /SINGLE/);
 		assert.match(description, /PARALLEL/);
 		assert.match(description, /CHAIN/);
-		assert.match(description, /Dispatch known configured roles directly/i);
-		assert.doesNotMatch(description, /Before execution, call \{ action: "list" \}/i);
+		assertKnownRolesDispatchDirectly(description);
 		assert.match(description, /normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget/i);
 		assert.match(description, /action without execution fields/i);
 		assert.match(description, /subagent_wait/i);
@@ -102,6 +108,7 @@ describe("registered subagent tool description", () => {
 		assert.match(description, new RegExp(escapeRegex(agentDir)));
 		assert.match(description, new RegExp(escapeRegex(projectConfigDir)));
 		assert.match(description, /SAFETY-CRITICAL SUBAGENT GUIDANCE/);
+		assertKnownRolesDispatchDirectly(description);
 		assert.equal(warnings.length, 0);
 	});
 
@@ -139,6 +146,12 @@ describe("registered subagent tool description", () => {
 		assert.equal(description.split(SUBAGENT_SAFETY_GUIDANCE).length - 1, 1);
 		assert.ok(description.endsWith(SUBAGENT_SAFETY_GUIDANCE));
 		assert.match(description, /ordinary child subagents are not orchestrators/i);
+	});
+
+	it("keeps the packaged parent skill optional about listing known configured roles", () => {
+		const skill = fs.readFileSync(path.join(projectRoot, "skills", "pi-subagents", "SKILL.md"), "utf-8");
+
+		assertKnownRolesDispatchDirectly(skill);
 	});
 
 	it("falls back to compact mode when custom mode has no valid file", () => {
