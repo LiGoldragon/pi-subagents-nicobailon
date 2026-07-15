@@ -68,28 +68,23 @@ DIAGNOSTICS:
 
 ${SUBAGENT_SAFETY_GUIDANCE}`;
 
-export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate to subagents or manage definitions. Use exactly one mode per call.
+export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate focused work to configured subagents. Use exactly one mode per call.
 
 EXECUTE:
-• Before execution, call { action: "list" }; run only executable/non-disabled configured agents/chains.
+• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action:"list" } for discovery, diagnostics, or after configuration changes.
 • SINGLE {agent, task?}; PARALLEL {tasks:[{agent,task,count?,output?,reads?,progress?}], concurrency?, worktree?}; CHAIN {chain:[{agent,task?},{parallel:[...]}]}.
-• context can be "fresh" or "fork"; omitted uses each agent defaultContext, otherwise fresh.
-• Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns.
-• Chain templates may use {task}, {previous}, {chain_dir}, and named outputs. Parallel worktree isolation requires a clean git repo.
-• If list shows proactive skill subagent suggestions, use a small fresh-context fanout only when the task is broad enough.
+• context is "fresh" or "fork"; omitted uses each role defaultContext, otherwise fresh. Budgets are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget.
+• Chain templates may use {task}, {previous}, {chain_dir}, and named outputs. Worktree isolation requires a clean git repo.
 
-MANAGE / CONTROL:
-• Use action without execution fields: list, get, models, create, update, delete, eject, disable, enable, reset, doctor, watchdog.status, watchdog.check, watchdog.recommend-model, watchdog.configure.
-• Async control actions: status, interrupt, stop, resume, steer, append-step. Use stop with an id for current-session top-level async runs. Use status view:"fleet" for active-run overview, view:"transcript" to tail child output, and steer for non-terminal live guidance. Use id/runId prefixes carefully; use index for a specific child.
-• Opt-in schedule actions: schedule, schedule-list, schedule-status, schedule-cancel. Schedule only explicit delayed runs the user asked for.
-
-ASYNC / WAIT:
-• async:true detaches background work. Do not sleep or poll just to wait; use the wait tool only when this turn must block. Otherwise continue useful work or respond and let completion notifications arrive.
-• Status and artifacts live under asyncId/asyncDir with status.json, events.jsonl, output logs, session files, and { action:"status", id:"..." }.
+CONTROL:
+• Use action without execution fields. Common actions: list, get, status, interrupt, stop, resume, steer, append-step, doctor.
+• async:true detaches independent work. Do not poll just to wait; use subagent_wait only when this turn must block. Status and artifacts are available through { action:"status", id:"..." }.
 
 SAFETY:
-• Ordinary child subagents are not orchestrators and must not run subagents. Only explicit fanout children may use child-safe subagent, still bounded by depth/session limits.
-• Keep one writer per cwd/worktree. Use fresh read-only review/validation fanout, then synthesize and apply fixes from the parent unless isolated worktrees were intentionally requested.`;
+• Ordinary child subagents are not orchestrators. Only explicit fanout children may use child-safe subagent, bounded by depth/session limits.
+• Keep one writer per cwd/worktree. Use fresh read-only review/validation fanout, then synthesize and apply fixes from the parent unless isolated worktrees were intentionally requested.
+
+Set toolDescriptionMode:"full" for administration, configuration, scheduling, and the complete parameter reference.`;
 
 function isToolDescriptionMode(value: unknown): value is ToolDescriptionMode {
 	return value === "full" || value === "compact" || value === "custom";

@@ -32,31 +32,45 @@ const COMPACT_MODEL_FACING_PARAMETER_DESCRIPTIONS = new Set([
 	"agent",
 	"async",
 	"chain",
-	"clarify",
 	"concurrency",
-	"config",
 	"context",
-	"control",
-	"dir",
 	"id",
 	"index",
-	"lines",
 	"maxRuntimeMs",
 	"message",
-	"notify",
 	"output",
 	"outputMode",
-	"runId",
-	"scope",
-	"target",
 	"task",
 	"tasks",
-	"thinking",
 	"timeoutMs",
 	"toolBudget",
 	"turnBudget",
 	"view",
 	"worktree",
+]);
+
+const FULL_MODE_ONLY_PARAMETERS = new Set([
+	"agentScope",
+	"artifacts",
+	"chainDir",
+	"chainName",
+	"clarify",
+	"config",
+	"control",
+	"dir",
+	"includeProgress",
+	"notify",
+	"runId",
+	"schedule",
+	"scheduleName",
+	"scope",
+	"sessionDir",
+	"share",
+	"skill",
+	"target",
+	"thinking",
+	"toolBudget",
+	"turnBudget",
 ]);
 
 function isTopLevelParameterDescription(path: string[]): boolean {
@@ -331,10 +345,16 @@ const SubagentParamsSchema = Type.Object({
 	acceptance: Type.Optional(AcceptanceOverride),
 });
 
+function buildCompactSubagentParams() {
+	const compact = keepTopLevelParameterDescriptions(SubagentParamsSchema) as { properties?: Record<string, unknown> };
+	for (const parameter of FULL_MODE_ONLY_PARAMETERS) delete compact.properties?.[parameter];
+	return compact;
+}
+
 export function buildSubagentParams(mode: ToolDescriptionMode | undefined = "compact") {
 	return mode === "full" || mode === "custom"
 		? SubagentParamsSchema
-		: keepTopLevelParameterDescriptions(SubagentParamsSchema);
+		: buildCompactSubagentParams();
 }
 
 /** Compact schema for ordinary parent and child-safe fanout registration. */

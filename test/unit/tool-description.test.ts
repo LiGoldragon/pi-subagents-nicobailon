@@ -69,21 +69,16 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /SINGLE/);
 		assert.match(description, /PARALLEL/);
 		assert.match(description, /CHAIN/);
-		assert.match(description, /Budget controls are opt-in/i);
+		assert.match(description, /Dispatch known configured roles directly/i);
+		assert.doesNotMatch(description, /Before execution, call \{ action: "list" \}/i);
 		assert.match(description, /normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget/i);
 		assert.match(description, /action without execution fields/i);
-		assert.match(description, /wait tool/i);
-		assert.match(description, /Do not sleep or poll/i);
+		assert.match(description, /subagent_wait/i);
+		assert.match(description, /Do not poll/i);
 		assert.match(description, /ordinary child subagents are not orchestrators/i);
 		assert.match(description, /one writer/i);
-		assert.match(description, /view:"fleet"/);
-		assert.match(description, /view:"transcript"/);
-		assert.match(description, /steer/);
-		assert.match(description, /schedule-list/);
-		assert.match(description, /eject/);
-		assert.match(description, /disable/);
-		assert.match(description, /status\.json/);
-		assert.match(description, /events\.jsonl/);
+		assert.match(description, /toolDescriptionMode:"full"/);
+		assert.doesNotMatch(description, /schedule-list/);
 	});
 
 	it("renders a custom project description with placeholders and mandatory safety guidance", () => {
@@ -230,11 +225,12 @@ describe("registered subagent tool description", () => {
 
 		const compactAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-schema-compact-"));
 		const compactProperties = propertiesOf(readRegisteredTool(compactAgentDir).parameters);
-		for (const field of ["scope", "notify", "index", "message", "clarify", "config", "worktree", "outputMode"]) {
+		for (const field of ["agent", "task", "tasks", "chain", "context", "action", "id", "index", "message", "worktree", "outputMode"]) {
 			assert.match(String(compactProperties[field]?.description ?? ""), /.+/, `compact schema should describe ${field}`);
 		}
-		assert.match(String(compactProperties.scope?.description ?? ""), /session.*persistent/i);
-		assert.match(String(compactProperties.notify?.description ?? ""), /owner.*child/i);
+		for (const field of ["scope", "notify", "clarify", "config", "control", "schedule"]) {
+			assert.equal(compactProperties[field], undefined, `compact schema should reserve ${field} for full mode`);
+		}
 		assert.match(String(compactProperties.index?.description ?? ""), /child.*transcript/i);
 		assert.match(String(compactProperties.message?.description ?? ""), /resume.*steer/i);
 
@@ -252,6 +248,13 @@ describe("registered subagent tool description", () => {
 		assert.match(customTool.description, /Custom schema mode/);
 		assert.match(String(customProperties.tasks?.items?.properties?.outputMode?.description ?? ""), /file-only requires output/i);
 		assert.match(String(customProperties.scope?.description ?? ""), /persistent settings writes/i);
+	});
+
+	it("registers a 9,969-character compact description-plus-schema surface", () => {
+		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-surface-"));
+		const registered = readRegisteredTool(agentDir);
+		const surface = `${registered.description}${JSON.stringify(registered.parameters)}`;
+		assert.equal(surface.length, 9_969, "registered compact surface should remain below the 14,477-character baseline");
 	});
 
 	it("registers compact default plus full, compact, custom, and fallback descriptions from extension config", () => {
