@@ -34,8 +34,9 @@ describe("registered subagent tool description", () => {
 		for (const builtinName of ["scout", "worker", "planner"]) {
 			assert.doesNotMatch(description, new RegExp(`\\b${builtinName}\\b`));
 		}
-		assert.match(description, /use \{ action: "list" \} to inspect configured agents\/chains/i);
-		assert.match(description, /executable\/non-disabled/i);
+		assert.match(description, /Dispatch a known configured agent or chain directly/i);
+		assert.match(description, /runtime validation rejects unknown or disabled/i);
+		assert.doesNotMatch(description, /Before execut(?:ing|ion).*action: "list"/i);
 		assert.match(description, /proactive skill subagent suggestions/i);
 		assert.doesNotMatch(description, /disabled builtins/i);
 		assert.match(description, /output\?,reads\?,progress\?/i);
@@ -75,8 +76,11 @@ describe("registered subagent tool description", () => {
 		const description = buildSubagentToolDescription({ toolDescriptionMode: "compact" });
 
 		assert.equal(description, COMPACT_SUBAGENT_TOOL_DESCRIPTION);
-		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length * 0.8, "compact mode should be materially shorter than full mode");
+		assert.ok(description.length < 4_000, "compact prompt has a fixed small raw-character budget");
+		assert.equal(description.length, 2_420, "compact prompt raw-character snapshot catches prompt bloat");
 		assert.match(description, /SINGLE/);
+		assert.match(description, /Dispatch known configured roles directly/i);
+		assert.doesNotMatch(description, /Before execution, call \{ action: "list" \}/i);
 		assert.match(description, /PARALLEL/);
 		assert.match(description, /CHAIN/);
 		assert.match(description, /action without execution fields/i);

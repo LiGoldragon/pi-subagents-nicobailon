@@ -280,6 +280,17 @@ describe("subagent prompt runtime", () => {
 		assert.ok(rewritten.includes("Current date: 2026-04-16"));
 	});
 
+	it("strips Pi 0.80.7 project_context tags without touching role skills", () => {
+		const prompt = `Before\n<project_context>private project instructions</project_context>\n${CONFIGURED_SKILLS_SECTION}\nAfter`;
+		const rewritten = rewriteSubagentPrompt(prompt, {
+			inheritProjectContext: false,
+			inheritSkills: false,
+		});
+		assert.ok(!rewritten.includes("private project instructions"));
+		assert.ok(rewritten.includes("configured-skill"));
+		assert.ok(rewritten.includes("After"));
+	});
+
 	it("strips only the inherited skills block", () => {
 		const rewritten = stripInheritedSkills(BASE_PROMPT);
 		assert.ok(rewritten.includes("# Project Context"));
@@ -510,6 +521,11 @@ describe("subagent prompt runtime", () => {
 	});
 
 	it("records and explains requested tools missing from the child registry", async () => {
+		// This witness is about diagnostics, not parent prompt inheritance. Clear
+		// outer child-process state so it is stable when the suite runs as a child.
+		delete process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT;
+		delete process.env.PI_SUBAGENT_INHERIT_SKILLS;
+		delete process.env.PI_SUBAGENT_FANOUT_CHILD;
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-tool-diagnostic-"));
 		try {
 			const diagnosticPath = path.join(dir, "tools.json");

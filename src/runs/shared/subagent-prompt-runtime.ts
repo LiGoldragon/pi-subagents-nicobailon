@@ -56,6 +56,8 @@ const PARENT_ONLY_CUSTOM_MESSAGE_TYPES = new Set([
 ]);
 const SUBAGENT_ORCHESTRATION_SKILL_NAME_PATTERN = /<name>\s*pi-subagents\s*<\/name>/;
 const PROJECT_CONTEXT_HEADER = "\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n";
+const PROJECT_CONTEXT_TAG = "<project_context>";
+const PROJECT_CONTEXT_END_TAG = "</project_context>";
 const SKILLS_HEADER = "\n\nThe following skills provide specialized instructions for specific tasks.";
 const DATE_HEADER = "\nCurrent date:";
 
@@ -89,6 +91,13 @@ function findSectionEnd(prompt: string, startIndex: number, nextHeaders: string[
 }
 
 export function stripProjectContext(prompt: string): string {
+	const taggedStart = prompt.indexOf(PROJECT_CONTEXT_TAG);
+	if (taggedStart !== -1) {
+		const taggedEnd = prompt.indexOf(PROJECT_CONTEXT_END_TAG, taggedStart);
+		if (taggedEnd !== -1) {
+			return `${prompt.slice(0, taggedStart)}${prompt.slice(taggedEnd + PROJECT_CONTEXT_END_TAG.length)}`;
+		}
+	}
 	const startIndex = prompt.indexOf(PROJECT_CONTEXT_HEADER);
 	if (startIndex === -1) return prompt;
 	const endIndex = findSectionEnd(prompt, startIndex + PROJECT_CONTEXT_HEADER.length, [SKILLS_HEADER, DATE_HEADER]);
@@ -125,6 +134,7 @@ export function rewriteSubagentPrompt(
 		rewritten = stripProjectContext(rewritten);
 	}
 	if (!options.inheritSkills) {
+		// Explicit role-configured skills are a separate contract and remain available.
 		rewritten = stripInheritedSkills(rewritten);
 	}
 	rewritten = stripSubagentOrchestrationSkill(rewritten);
@@ -290,13 +300,13 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI): void {
 	let nativeSupervisorClientRegistered = false;
 	let nativeSupervisorFallbackRegistered = false;
 	const registerNativeSupervisorClientOnce = (): void => {
-		if (nativeSupervisorClientRegistered) return;
+		if (nativeSupervisorClientRegistered || typeof pi.registerTool !== "function") return;
 		nativeSupervisorClientRegistered = true;
 		registerNativeSupervisorClient(pi, { includeIntercomFallback: false });
 	};
 	const registerNativeSupervisorFallbackOnce = (): void => {
 		registerNativeSupervisorClientOnce();
-		if (nativeSupervisorFallbackRegistered) return;
+		if (nativeSupervisorFallbackRegistered || typeof pi.registerTool !== "function") return;
 		nativeSupervisorFallbackRegistered = true;
 		registerNativeSupervisorClient(pi);
 	};
