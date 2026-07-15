@@ -3,6 +3,7 @@
  */
 
 import { Type } from "typebox";
+import type { ToolDescriptionMode } from "../shared/types.ts";
 
 function keepTopLevelParameterDescriptions<T>(schema: T): T {
 	return pruneNestedDescriptions(schema, []) as T;
@@ -294,7 +295,14 @@ const SubagentParamsSchema = Type.Object({
 	acceptance: Type.Optional(AcceptanceOverride),
 });
 
-export const SubagentParams = keepTopLevelParameterDescriptions(SubagentParamsSchema);
+export function buildSubagentParams(mode: ToolDescriptionMode | undefined = "compact") {
+	return mode === "full" || mode === "custom"
+		? SubagentParamsSchema
+		: keepTopLevelParameterDescriptions(SubagentParamsSchema);
+}
+
+export const SubagentParams = buildSubagentParams();
+export const FullSubagentParams = buildSubagentParams("full");
 
 const SubagentWaitParamsSchema = Type.Object({
 	id: Type.Optional(Type.String({

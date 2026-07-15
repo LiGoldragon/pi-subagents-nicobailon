@@ -24,7 +24,7 @@ import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "..
 import { resolveCurrentSessionId } from "../shared/session-identity.ts";
 import { cleanupOldChainDirs } from "../shared/settings.ts";
 import { clearLegacyResultAnimationTimer, renderSubagentResult } from "../tui/render.ts";
-import { SubagentParams, SubagentWaitParams } from "./schemas.ts";
+import { buildSubagentParams, SubagentParams, SubagentWaitParams } from "./schemas.ts";
 import { validateChainInput } from "./chain-validation.ts";
 import { createSubagentExecutor, type SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
 import { createAsyncJobTracker } from "../runs/background/async-job-tracker.ts";
@@ -432,7 +432,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		name: "subagent",
 		label: "Subagent",
 		description: buildSubagentToolDescription(config),
-		parameters: SubagentParams,
+		parameters: buildSubagentParams(config.toolDescriptionMode),
 
 		prepareArguments(args) {
 			// Run friendly chain validation before pi-ai's raw TypeBox schema check
