@@ -384,7 +384,7 @@ function isCommandsRunArray(value: unknown): value is NonNullable<AcceptanceRepo
 		if (!item || typeof item !== "object" || Array.isArray(item)) return false;
 		const command = item as { command?: unknown; result?: unknown; summary?: unknown };
 		return typeof command.command === "string"
-			&& (command.result === "passed" || command.result === "failed" || command.result === "not-run")
+			&& (command.result === "passed" || command.result === "failed" || command.result === "blocked" || command.result === "not-run")
 			&& typeof command.summary === "string";
 	});
 }

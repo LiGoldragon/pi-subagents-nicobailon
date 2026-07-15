@@ -19,6 +19,13 @@ function escapeRegex(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function assertKnownRolesDispatchDirectly(surface: string): void {
+	assert.match(surface, /Dispatch known configured roles directly/i);
+	assert.match(surface, /Use\s+`?\{\s*action:\s*"list"\s*\}`?\s+only\s+for\s+diagnostics,\s+configuration changes,\s+or unknown-role recovery/i);
+	assert.doesNotMatch(surface, /Call\s+`?\{\s*action:\s*"list"\s*\}`?\s+before execution/i);
+	assert.doesNotMatch(surface, /Before executing, use\s+`?\{\s*action:\s*"list"\s*\}`?/i);
+}
+
 function parentToolEnv(agentDir?: string): NodeJS.ProcessEnv {
 	const env = { ...process.env };
 	delete env[SUBAGENT_CHILD_ENV];
@@ -34,8 +41,8 @@ describe("registered subagent tool description", () => {
 		for (const builtinName of ["scout", "worker", "planner"]) {
 			assert.doesNotMatch(description, new RegExp(`\\b${builtinName}\\b`));
 		}
-		assert.match(description, /use \{ action: "list" \} to inspect configured agents\/chains/i);
-		assert.match(description, /executable\/non-disabled/i);
+		assertKnownRolesDispatchDirectly(description);
+		assert.match(description, /runtime rejects unknown or disabled names/i);
 		assert.match(description, /proactive skill subagent suggestions/i);
 		assert.doesNotMatch(description, /disabled builtins/i);
 		assert.match(description, /output\?,reads\?,progress\?/i);
@@ -69,21 +76,15 @@ describe("registered subagent tool description", () => {
 		assert.match(description, /SINGLE/);
 		assert.match(description, /PARALLEL/);
 		assert.match(description, /CHAIN/);
-		assert.match(description, /Budget controls are opt-in/i);
+		assertKnownRolesDispatchDirectly(description);
 		assert.match(description, /normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget/i);
 		assert.match(description, /action without execution fields/i);
-		assert.match(description, /wait tool/i);
-		assert.match(description, /Do not sleep or poll/i);
+		assert.match(description, /subagent_wait/i);
+		assert.match(description, /Do not poll/i);
 		assert.match(description, /ordinary child subagents are not orchestrators/i);
 		assert.match(description, /one writer/i);
-		assert.match(description, /view:"fleet"/);
-		assert.match(description, /view:"transcript"/);
-		assert.match(description, /steer/);
-		assert.match(description, /schedule-list/);
-		assert.match(description, /eject/);
-		assert.match(description, /disable/);
-		assert.match(description, /status\.json/);
-		assert.match(description, /events\.jsonl/);
+		assert.match(description, /toolDescriptionMode:"full"/);
+		assert.doesNotMatch(description, /schedule-list/);
 	});
 
 	it("renders a custom project description with placeholders and mandatory safety guidance", () => {
@@ -107,6 +108,7 @@ describe("registered subagent tool description", () => {
 		assert.match(description, new RegExp(escapeRegex(agentDir)));
 		assert.match(description, new RegExp(escapeRegex(projectConfigDir)));
 		assert.match(description, /SAFETY-CRITICAL SUBAGENT GUIDANCE/);
+		assertKnownRolesDispatchDirectly(description);
 		assert.equal(warnings.length, 0);
 	});
 
@@ -144,6 +146,12 @@ describe("registered subagent tool description", () => {
 		assert.equal(description.split(SUBAGENT_SAFETY_GUIDANCE).length - 1, 1);
 		assert.ok(description.endsWith(SUBAGENT_SAFETY_GUIDANCE));
 		assert.match(description, /ordinary child subagents are not orchestrators/i);
+	});
+
+	it("keeps the packaged parent skill optional about listing known configured roles", () => {
+		const skill = fs.readFileSync(path.join(projectRoot, "skills", "pi-subagents", "SKILL.md"), "utf-8");
+
+		assertKnownRolesDispatchDirectly(skill);
 	});
 
 	it("falls back to compact mode when custom mode has no valid file", () => {
@@ -230,11 +238,12 @@ describe("registered subagent tool description", () => {
 
 		const compactAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-schema-compact-"));
 		const compactProperties = propertiesOf(readRegisteredTool(compactAgentDir).parameters);
-		for (const field of ["scope", "notify", "index", "message", "clarify", "config", "worktree", "outputMode"]) {
+		for (const field of ["agent", "task", "tasks", "chain", "context", "action", "id", "index", "message", "worktree", "outputMode"]) {
 			assert.match(String(compactProperties[field]?.description ?? ""), /.+/, `compact schema should describe ${field}`);
 		}
-		assert.match(String(compactProperties.scope?.description ?? ""), /session.*persistent/i);
-		assert.match(String(compactProperties.notify?.description ?? ""), /owner.*child/i);
+		for (const field of ["scope", "notify", "clarify", "config", "control", "schedule"]) {
+			assert.equal(compactProperties[field], undefined, `compact schema should reserve ${field} for full mode`);
+		}
 		assert.match(String(compactProperties.index?.description ?? ""), /child.*transcript/i);
 		assert.match(String(compactProperties.message?.description ?? ""), /resume.*steer/i);
 
@@ -252,6 +261,13 @@ describe("registered subagent tool description", () => {
 		assert.match(customTool.description, /Custom schema mode/);
 		assert.match(String(customProperties.tasks?.items?.properties?.outputMode?.description ?? ""), /file-only requires output/i);
 		assert.match(String(customProperties.scope?.description ?? ""), /persistent settings writes/i);
+	});
+
+	it("registers a 9,969-character compact description-plus-schema surface", () => {
+		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-tool-surface-"));
+		const registered = readRegisteredTool(agentDir);
+		const surface = `${registered.description}${JSON.stringify(registered.parameters)}`;
+		assert.equal(surface.length, 9_969, "registered compact surface should remain below the 14,477-character baseline");
 	});
 
 	it("registers compact default plus full, compact, custom, and fallback descriptions from extension config", () => {

@@ -15,8 +15,9 @@ child may use only its child-safe subagent capability for its assigned fanout.
 
 ## Dispatch
 
-1. Call `{ action: "list" }` before execution. Run only configured,
-   executable, non-disabled agents or chains.
+1. Dispatch known configured roles directly. Runtime rejects unknown or
+   disabled names; use `{ action: "list" }` only for diagnostics,
+   configuration changes, or unknown-role recovery.
 2. Choose exactly one execution shape: single `{agent, task?}`, parallel
    `{tasks:[...]}`, or chain `{chain:[...]}`. Omit `action` for execution; use
    it only for management or control.

@@ -48,6 +48,8 @@ const PARENT_ONLY_CUSTOM_MESSAGE_TYPES = new Set([
 ]);
 const SUBAGENT_ORCHESTRATION_SKILL_NAME_PATTERN = /<name>\s*pi-subagents\s*<\/name>/;
 const PROJECT_CONTEXT_HEADER = "\n\n# Project Context\n\nProject-specific instructions and guidelines:\n\n";
+const PROJECT_CONTEXT_TAG = "<project_context>";
+const PROJECT_CONTEXT_END_TAG = "</project_context>";
 const SKILLS_HEADER = "\n\nThe following skills provide specialized instructions for specific tasks.";
 const DATE_HEADER = "\nCurrent date:";
 
@@ -69,6 +71,13 @@ function findSectionEnd(prompt: string, startIndex: number, nextHeaders: string[
 }
 
 export function stripProjectContext(prompt: string): string {
+	const taggedStartIndex = prompt.indexOf(PROJECT_CONTEXT_TAG);
+	if (taggedStartIndex !== -1) {
+		const taggedEndIndex = prompt.indexOf(PROJECT_CONTEXT_END_TAG, taggedStartIndex + PROJECT_CONTEXT_TAG.length);
+		if (taggedEndIndex !== -1) {
+			return `${prompt.slice(0, taggedStartIndex)}${prompt.slice(taggedEndIndex + PROJECT_CONTEXT_END_TAG.length)}`;
+		}
+	}
 	const startIndex = prompt.indexOf(PROJECT_CONTEXT_HEADER);
 	if (startIndex === -1) return prompt;
 	const endIndex = findSectionEnd(prompt, startIndex + PROJECT_CONTEXT_HEADER.length, [SKILLS_HEADER, DATE_HEADER]);

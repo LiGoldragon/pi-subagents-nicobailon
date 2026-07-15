@@ -193,11 +193,11 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.doesNotMatch(description, /orchestration\./);
 	});
 
-	it("keeps budget APIs compatible but marks them opt-in", () => {
-		const timeoutSchema = SubagentParams?.properties?.timeoutMs;
-		const maxRuntimeSchema = SubagentParams?.properties?.maxRuntimeMs;
-		const turnBudgetSchema = SubagentParams?.properties?.turnBudget;
-		const toolBudgetSchema = SubagentParams?.properties?.toolBudget;
+	it("keeps budget APIs compatible in the explicit full schema", () => {
+		const timeoutSchema = FullSubagentParams?.properties?.timeoutMs;
+		const maxRuntimeSchema = FullSubagentParams?.properties?.maxRuntimeMs;
+		const turnBudgetSchema = FullSubagentParams?.properties?.turnBudget;
+		const toolBudgetSchema = FullSubagentParams?.properties?.toolBudget;
 		assert.ok(timeoutSchema, "timeoutMs schema should exist");
 		assert.ok(maxRuntimeSchema, "maxRuntimeMs schema should exist");
 		assert.equal(timeoutSchema.minimum, 1);
@@ -218,7 +218,7 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(toolBudgetSchema?.properties?.hard?.minimum, 1);
 	});
 
-	it("includes subagent control fields", () => {
+	it("keeps ordinary control fields compact and reserves rare control configuration for full mode", () => {
 		const idSchema = SubagentParams?.properties?.id;
 		assert.ok(idSchema, "id schema should exist");
 		assert.equal(idSchema.type, "string");
@@ -227,15 +227,10 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.match(String(idSchema.description ?? ""), /steer/i);
 		assert.match(String(idSchema.description ?? ""), /append-step/i);
 
-		const runIdSchema = SubagentParams?.properties?.runId;
-		assert.ok(runIdSchema, "runId schema should exist");
-		assert.equal(runIdSchema.type, "string");
-		assert.match(String(runIdSchema.description ?? ""), /interrupt/i);
-		assert.match(String(runIdSchema.description ?? ""), /steer/i);
-		assert.match(String(runIdSchema.description ?? ""), /append-step/i);
+		assert.equal(SubagentParams?.properties?.runId, undefined);
 
-		const dirSchema = SubagentParams?.properties?.dir;
-		assert.ok(dirSchema, "dir schema should exist");
+		const dirSchema = FullSubagentParams?.properties?.dir;
+		assert.ok(dirSchema, "full schema should retain dir");
 		assert.equal(dirSchema.type, "string");
 		assert.match(String(dirSchema.description ?? ""), /status/i);
 		assert.match(String(dirSchema.description ?? ""), /steer/i);
@@ -247,14 +242,14 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.match(String(viewSchema.description ?? ""), /status view/i);
 		assert.match(String(viewSchema.description ?? ""), /transcript/i);
 
-		const linesSchema = SubagentParams?.properties?.lines;
-		assert.ok(linesSchema, "lines schema should exist");
+		const linesSchema = FullSubagentParams?.properties?.lines;
+		assert.ok(linesSchema, "full schema should retain lines");
 		assert.equal(linesSchema.minimum, 1);
 		assert.equal(linesSchema.maximum, 500);
 		assert.match(String(linesSchema.description ?? ""), /transcript/i);
 
-		const controlSchema = SubagentParams?.properties?.control;
-		assert.ok(controlSchema, "control schema should exist");
+		const controlSchema = FullSubagentParams?.properties?.control;
+		assert.ok(controlSchema, "full schema should retain control configuration");
 		assert.equal(controlSchema.properties?.needsAttentionAfterMs?.minimum, 1);
 		assert.equal(controlSchema.properties?.activeNoticeAfterMs?.minimum, 1);
 		assert.equal(controlSchema.properties?.activeNoticeAfterTurns?.minimum, 1);
@@ -264,16 +259,15 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.deepEqual(controlSchema.properties?.notifyChannels?.items?.enum, ["event", "async", "intercom"]);
 	});
 
-	it("bounds compact rendered context by bytes while preserving safety descriptions", () => {
+	it("keeps compact schema materially below the prior registered-surface baseline", () => {
 		assert.ok(SubagentParams, "SubagentParams schema should exist");
 		assert.ok(FullSubagentParams, "FullSubagentParams schema should exist");
-		const compactContext = `${buildSubagentToolDescription()}\n${JSON.stringify(SubagentParams)}`;
-		const fullContext = `${FULL_SUBAGENT_TOOL_DESCRIPTION}\n${JSON.stringify(FullSubagentParams)}`;
-		const compactBytes = new TextEncoder().encode(compactContext).length;
-		const fullBytes = new TextEncoder().encode(fullContext).length;
+		const compactSurface = `${buildSubagentToolDescription()}${JSON.stringify(SubagentParams)}`;
+		const fullSurface = `${FULL_SUBAGENT_TOOL_DESCRIPTION}${JSON.stringify(FullSubagentParams)}`;
 
-		assert.ok(compactBytes <= 16_000, `expected compact context within the 16KB regression bound, got ${compactBytes} bytes`);
-		assert.ok(compactBytes < fullBytes, `expected compact context to remain smaller: ${compactBytes} vs ${fullBytes} bytes`);
+		assert.ok(compactSurface.length < 10_000, `expected compact registered surface below 10k chars, got ${compactSurface.length}`);
+		assert.ok(compactSurface.length < 14_477, `expected compact registered surface below the 14,477-character baseline, got ${compactSurface.length}`);
+		assert.ok(compactSurface.length < fullSurface.length, `expected compact context to remain smaller: ${compactSurface.length} vs ${fullSurface.length}`);
 	});
 
 	it("keeps complete nested parameter guidance for explicit full and custom modes", () => {
@@ -429,8 +423,9 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 	});
 
 	it("uses provider-friendly anyOf unions for flexible fields and chain items", () => {
-		const skillSchema = SubagentParams?.properties?.skill;
-		assert.ok(skillSchema, "skill schema should exist");
+		assert.equal(SubagentParams?.properties?.skill, undefined);
+		const skillSchema = FullSubagentParams?.properties?.skill;
+		assert.ok(skillSchema, "full schema should retain skill");
 		assert.equal(skillSchema.type, undefined);
 		assert.equal(hasAnyOfArrayWithStringItems(skillSchema), true);
 		assert.equal(hasAnyOfType(skillSchema, "boolean"), true);
@@ -442,8 +437,9 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(hasAnyOfType(outputSchema, "string"), true);
 		assert.equal(hasAnyOfType(outputSchema, "boolean"), true);
 
-		const configSchema = SubagentParams?.properties?.config;
-		assert.ok(configSchema, "config schema should exist");
+		assert.equal(SubagentParams?.properties?.config, undefined);
+		const configSchema = FullSubagentParams?.properties?.config;
+		assert.ok(configSchema, "full schema should retain config");
 		assert.equal(configSchema.type, undefined);
 		assert.equal(anyOfBranches(configSchema).some((branch) => branch.type === "object" && branch.additionalProperties === true), true);
 		assert.equal(hasAnyOfType(configSchema, "string"), true);
@@ -508,9 +504,9 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 	});
 
 	it("validates representative flexible field values with TypeBox compiler", { skip: !CompileSchema ? "typebox compiler not available" : undefined }, () => {
-		assert.ok(SubagentParams, "SubagentParams schema should exist");
+		assert.ok(FullSubagentParams, "FullSubagentParams schema should exist");
 		assert.ok(CompileSchema, "TypeBox compiler should exist");
-		const validator = CompileSchema(SubagentParams);
+		const validator = CompileSchema(FullSubagentParams);
 		const validValues = [
 			{ skill: "review" },
 			{ skill: false },

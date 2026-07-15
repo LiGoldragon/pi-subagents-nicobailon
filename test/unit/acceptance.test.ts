@@ -199,12 +199,18 @@ describe("acceptance gates", () => {
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.evidence: expected non-empty string; got ""/);
 	});
 
-	it("accepts blocked command evidence", () => {
-		const parsed = parseAcceptanceReport(report({
-			commandsRun: [{ command: "lojix deploy", result: "blocked", summary: "waiting for required approval" }],
-		}));
+	it("accepts and recognizes blocked command evidence", () => {
+		const blockedCommand = { command: "lojix deploy", result: "blocked", summary: "waiting for required approval" };
+		const parsed = parseAcceptanceReport(report({ commandsRun: [blockedCommand] }));
 		assert.equal(parsed.error, undefined);
 		assert.equal(parsed.report?.commandsRun?.[0]?.result, "blocked");
+
+		const genericJson = parseAcceptanceReport(`\`\`\`json\n${JSON.stringify({
+			criteriaSatisfied: [{ id: "criterion-1", status: "not-satisfied", evidence: "deployment remains blocked" }],
+			commandsRun: [blockedCommand],
+		})}\n\`\`\``);
+		assert.equal(genericJson.error, undefined);
+		assert.equal(genericJson.report?.commandsRun?.[0]?.result, "blocked");
 	});
 
 	it("explicit none disables inferred gates when a reason is present", () => {
