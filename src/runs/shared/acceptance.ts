@@ -81,8 +81,7 @@ function inferLevel(input: {
 	const readOnlyTask = /\b(?:read[- ]only|review[- ]only|do not edit|don't edit|no edits|without edits|inspect|summari[sz]e)\b/.test(task);
 	const writeTask = /\b(?:fix|implement|update|write|edit|modify|migrate|release|security|delete|remove|refactor|commit)\b/.test(task)
 		|| /\bworker\b/.test(agent);
-	const risky = Boolean(input.async && writeTask)
-		|| Boolean(input.dynamic)
+	const risky = Boolean(input.dynamic)
 		|| Boolean(input.dynamicGroup)
 		|| /\b(?:release|migration|migrate|security|data[- ]loss|destructive|post-review|fix pass)\b/.test(task);
 
