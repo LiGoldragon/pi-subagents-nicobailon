@@ -1044,30 +1044,32 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 				stepIndex,
 			};
 			dynamicGroupStatuses[stepIndex] = { status: "completed" };
-			const effectiveGroupAcceptance = resolveEffectiveAcceptance({
-				explicit: step.acceptance,
-				agentName: step.parallel.agent,
-				acceptanceRole: agents.find((agent) => agent.name === step.parallel.agent)?.acceptanceRole,
-				task: materialized.parallel
-					.map((task) => (task.task ?? originalTask ?? "").replace(/\{task\}/g, originalTask ?? ""))
-					.join("\n"),
-				mode: "chain",
-				dynamicGroup: true,
-			});
-			const groupAcceptance = await evaluateAcceptance({
-				acceptance: effectiveGroupAcceptance,
-				output: "",
-				report: aggregateAcceptanceReport({
-					results: parallelResults,
-					notes: `Dynamic fanout collected ${collected.length} result(s) into ${step.collect.as}.`,
-				}),
-				cwd: cwd ?? ctx.cwd,
-			});
-			dynamicGroupStatuses[stepIndex].acceptance = groupAcceptance;
-			const groupAcceptanceFailure = effectiveGroupAcceptance.explicit ? acceptanceFailureMessage(groupAcceptance) : undefined;
-			if (groupAcceptanceFailure) {
-				dynamicGroupStatuses[stepIndex] = { status: "failed", error: groupAcceptanceFailure, acceptance: groupAcceptance };
-				return buildChainExecutionErrorResult(groupAcceptanceFailure, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex - dynamicParallelStep.parallel.length }));
+			if (step.acceptance !== undefined) {
+				const effectiveGroupAcceptance = resolveEffectiveAcceptance({
+					explicit: step.acceptance,
+					agentName: step.parallel.agent,
+					acceptanceRole: agents.find((agent) => agent.name === step.parallel.agent)?.acceptanceRole,
+					task: materialized.parallel
+						.map((task) => (task.task ?? originalTask ?? "").replace(/\{task\}/g, originalTask ?? ""))
+						.join("\n"),
+					mode: "chain",
+				});
+				const groupAcceptance = await evaluateAcceptance({
+					acceptance: effectiveGroupAcceptance,
+					output: "",
+					report: aggregateAcceptanceReport({
+						results: parallelResults,
+						notes: `Dynamic fanout collected ${collected.length} result(s) into ${step.collect.as}.`,
+					}),
+					cwd: cwd ?? ctx.cwd,
+				});
+				dynamicGroupStatuses[stepIndex].acceptance = groupAcceptance;
+				const groupAcceptanceFailure = acceptanceFailureMessage(groupAcceptance);
+				if (groupAcceptanceFailure) {
+					dynamicGroupStatuses[stepIndex] = { status: "failed", error: groupAcceptanceFailure, acceptance: groupAcceptance };
+					return buildChainExecutionErrorResult(groupAcceptanceFailure, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex - dynamicParallelStep.parallel.length }));
+				}
+			}
 			}
 			const taskResults: ParallelTaskResult[] = parallelResults.map((result, i) => ({
 				agent: result.agent,

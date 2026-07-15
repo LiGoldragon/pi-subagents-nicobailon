@@ -735,15 +735,16 @@ export function buildAsyncRunnerSteps(id: string, params: AsyncRunnerStepBuildPa
 					label: s.label,
 					sessionFiles: dynamicFlatSteps.map((step) => step.sessionFile),
 					thinkingOverrides: dynamicFlatSteps.map((step) => step.thinkingOverride),
-					effectiveAcceptance: resolveEffectiveAcceptance({
-						explicit: s.acceptance,
-						agentName: s.parallel.agent,
-						acceptanceRole: agent.acceptanceRole,
-						task: parallel.task,
-						mode: resultMode,
-						async: true,
-						dynamicGroup: true,
-					}),
+					effectiveAcceptance: s.acceptance === undefined
+						? undefined
+						: resolveEffectiveAcceptance({
+							explicit: s.acceptance,
+							agentName: s.parallel.agent,
+							acceptanceRole: agent.acceptanceRole,
+							task: parallel.task,
+							mode: resultMode,
+							async: true,
+						}),
 					acceptanceInput: s.acceptance,
 					acceptanceRole: agent.acceptanceRole,
 				};
