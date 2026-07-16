@@ -89,6 +89,28 @@ bash:
 	});
 });
 
+describe("generated project role frontmatter", () => {
+	it("parses and serializes machine-readable dispatch metadata", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-project-role-frontmatter-"));
+		tempDirs.push(dir);
+		const filePath = path.join(dir, ".pi", "agents", "planner.md");
+		writeAgent(filePath, `---
+name: planner
+description: Planner
+projectRoleIdentity: planner
+projectRoleDispatchKind: nested
+allowedChildRoleNames: reader, writer
+---
+
+Plan work
+`);
+		const agent = discoverAgents(dir, "project").agents.find((candidate) => candidate.name === "planner");
+		assert.deepEqual(agent?.projectRole, { version: 1, projectRoleIdentity: "planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["reader", "writer"] });
+		assert.match(serializeAgent(agent!), /^projectRoleDispatchKind: nested$/m);
+		assert.match(serializeAgent(agent!), /^allowedChildRoleNames: reader, writer$/m);
+	});
+});
+
 describe("agent frontmatter defaultContext", () => {
 	it("serializes defaultContext into agent frontmatter", () => {
 		const agent: AgentConfig = {

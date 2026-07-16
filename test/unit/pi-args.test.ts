@@ -6,6 +6,7 @@ import { afterEach, describe, it } from "node:test";
 import { computeMcpServerHash } from "../../src/runs/shared/mcp-direct-tool-allowlist.ts";
 import { TOOL_BUDGET_ENV } from "../../src/runs/shared/tool-budget.ts";
 import { CHILD_WATCHDOG_CONFIG_ENV } from "../../src/watchdog/child-status.ts";
+import { PROJECT_ROLE_METADATA_ENV } from "../../src/agents/project-role-policy.ts";
 import {
 	SUBAGENT_FANOUT_CHILD_ENV,
 	SUBAGENT_PARENT_CHILD_INDEX_ENV,
@@ -231,6 +232,24 @@ describe("buildPiArgs session wiring", () => {
 			autoFollowMaxAttempts: 3,
 			stalemateRepeats: 2,
 		});
+	});
+});
+
+describe("buildPiArgs generated-role wiring", () => {
+	it("freezes nested role metadata and grants fanout only to nested roles", () => {
+		const nested = buildPiArgs({
+			baseArgs: ["-p"], task: "hello", sessionEnabled: false, inheritProjectContext: false, inheritSkills: false,
+			tools: ["subagent"],
+			projectRole: { version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["Reader"] },
+		});
+		assert.equal(nested.env[SUBAGENT_FANOUT_CHILD_ENV], "1");
+		assert.deepEqual(JSON.parse(nested.env[PROJECT_ROLE_METADATA_ENV] ?? "{}"), { version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["Reader"] });
+		const leaf = buildPiArgs({
+			baseArgs: ["-p"], task: "hello", sessionEnabled: false, inheritProjectContext: false, inheritSkills: false,
+			tools: ["subagent"],
+			projectRole: { version: 1, projectRoleIdentity: "Reader", projectRoleDispatchKind: "leaf", allowedChildRoleNames: [] },
+		});
+		assert.equal(leaf.env[SUBAGENT_FANOUT_CHILD_ENV], "0");
 	});
 });
 

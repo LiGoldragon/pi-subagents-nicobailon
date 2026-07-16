@@ -530,7 +530,9 @@ wait also returns when a run needs attention (a child that went idle or blocked 
 			return waitForSubagents(params, signal, { state, events: pi.events, enabled: waitToolConfig.enabled });
 		},
 	};
-	pi.registerTool(waitTool);
+	if (registeredToolDescription.mode === "full" || registeredToolDescription.mode === "custom") {
+		pi.registerTool(waitTool);
+	}
 
 	registerSlashCommands(pi, state);
 

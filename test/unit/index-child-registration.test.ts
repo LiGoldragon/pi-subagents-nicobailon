@@ -120,7 +120,7 @@ describe("subagent extension child mode", () => {
 		try {
 			const configDir = path.join(agentDir, "extensions", "subagent");
 			fs.mkdirSync(configDir, { recursive: true });
-			fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ waitTool: { enabled: false } }), "utf-8");
+			fs.writeFileSync(path.join(configDir, "config.json"), JSON.stringify({ toolDescriptionMode: "full", waitTool: { enabled: false } }), "utf-8");
 
 			const script = String.raw`
 				import registerSubagentExtension from "./src/extension/index.ts";

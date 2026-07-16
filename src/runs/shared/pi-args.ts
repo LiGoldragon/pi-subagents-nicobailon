@@ -8,6 +8,7 @@ import { STRUCTURED_OUTPUT_CAPTURE_ENV, STRUCTURED_OUTPUT_SCHEMA_ENV } from "./s
 import { TEMP_ROOT_DIR, type JsonSchemaObject, type ResolvedToolBudget } from "../../shared/types.ts";
 import { TOOL_BUDGET_ENV, encodeToolBudgetEnv } from "./tool-budget.ts";
 import { CHILD_WATCHDOG_CONFIG_ENV, encodeChildWatchdogConfig, type ChildWatchdogConfig } from "../../watchdog/child-status.ts";
+import { PROJECT_ROLE_METADATA_ENV, serializeProjectRoleMetadata, type ProjectRoleMetadata } from "../../agents/project-role-policy.ts";
 
 const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"];
 const TASK_ARG_LIMIT = 8000;
@@ -73,6 +74,8 @@ interface BuildPiArgsInput {
 	};
 	toolBudget?: ResolvedToolBudget;
 	childWatchdog?: ChildWatchdogConfig;
+	/** Frozen generated-role identity passed only to the spawned child process. */
+	projectRole?: ProjectRoleMetadata;
 }
 
 interface BuildPiArgsResult {
@@ -123,7 +126,9 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 	const declaredBuiltinTools = input.requireReadTool && input.tools?.length && !declaredBuiltinToolsBase.includes("read")
 		? ["read", ...declaredBuiltinToolsBase]
 		: declaredBuiltinToolsBase;
-	const fanoutAuthorized = declaredBuiltinTools.includes("subagent");
+	// Older packets have no role metadata; preserve their child-safe fanout
+	// behavior while generated packets require an explicit nested role.
+	const fanoutAuthorized = declaredBuiltinTools.includes("subagent") && (input.projectRole === undefined || input.projectRole.projectRoleDispatchKind === "nested");
 	const toolExtensionPaths: string[] = [];
 	if (input.tools?.length) {
 		const builtinTools = [...declaredBuiltinTools];
@@ -181,6 +186,7 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 	const env: Record<string, string | undefined> = {};
 	env[SUBAGENT_CHILD_ENV] = "1";
 	env[SUBAGENT_FANOUT_CHILD_ENV] = fanoutAuthorized ? "1" : "0";
+	env[PROJECT_ROLE_METADATA_ENV] = input.projectRole ? serializeProjectRoleMetadata(input.projectRole) : "";
 	const inheritedNestedRoute = Boolean(process.env[SUBAGENT_PARENT_EVENT_SINK_ENV] && process.env[SUBAGENT_PARENT_ROOT_RUN_ID_ENV] && process.env[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV]);
 	const parentRunId = input.parentRunId ?? input.runId ?? (inheritedNestedRoute ? process.env[SUBAGENT_RUN_ID_ENV] : undefined) ?? process.env[SUBAGENT_PARENT_RUN_ID_ENV] ?? "";
 	const parentChildIndex = input.parentChildIndex !== undefined

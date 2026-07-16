@@ -236,6 +236,7 @@ async function runSingleAttempt(
 		structuredOutput: options.structuredOutput,
 		toolBudget: options.toolBudget,
 		childWatchdog,
+		projectRole: agent.projectRole,
 	});
 
 	const result: SingleResult = {

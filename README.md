@@ -1207,7 +1207,7 @@ After a worktree parallel step completes, per-agent diff stats are appended to t
 { "toolDescriptionMode": "compact" }
 ```
 
-Controls the parent-facing `subagent` tool description registered at startup. `compact` is the default: it keeps normal single, parallel, chain, status, and async/wait dispatch available without requiring a preliminary list call. Administration, persistent configuration, scheduling, watchdog configuration, and their parameter schemas are opt-in through `full`. The equivalent registered compact surface (description plus serialized schema) is 9,969 characters, reduced from the fork-main 14,477-character baseline.
+Controls the parent-facing `subagent` tool description registered at startup. `compact` is the default minimal direct-launch surface: `{ agent, task?, async?, context? }`. Generated packets own role names and descriptions, so dispatch never requires a preliminary list call. Lists, status/transcripts, wait, controls, chains/fanout, budgets, acceptance overrides, worktrees, scheduling, administration, watchdogs, and their parameter schemas are opt-in through `full`. The measured minimal registered surface (description plus serialized schema) is 1,741 characters, reduced by 12,736 characters from the fork-main 14,477-character baseline.
 
 `custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. A valid custom mode retains the complete parameter schema; missing, empty, unreadable, or oversized custom files fall back to the compact description and compact schema. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
 
@@ -1457,7 +1457,7 @@ This is disabled by default. Session data may contain source code, paths, enviro
 
 ## Recursion guard
 
-Subagents can call `subagent` only when their resolved builtin tools explicitly include `subagent`. That is meant for delegated fanout agents, not ordinary worker/reviewer children. A depth guard prevents unbounded nesting.
+Generated nested roles can call `subagent` only when their resolved builtin tools explicitly include `subagent` and their frozen metadata declares the exact leaf-role child set. Manager can dispatch visible generated project roles except itself; leaves cannot dispatch. Legacy fanout packets without generated metadata retain their existing child-safe behavior. A depth guard prevents unbounded nesting.
 
 By default, nesting is limited to two levels: main session → subagent → sub-subagent. Deeper calls are blocked with guidance to complete the current task directly. Nested runs appear in the parent status widget and `status` output as a tree, and `status`, `interrupt`, and `resume` can target a nested run by its id.
 

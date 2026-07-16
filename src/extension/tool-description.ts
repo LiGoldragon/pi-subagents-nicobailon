@@ -7,23 +7,20 @@ const CUSTOM_TOOL_DESCRIPTION_FILE = "subagent-tool-description.md";
 const CUSTOM_TOOL_DESCRIPTION_MAX_BYTES = 50 * 1024;
 
 export const SUBAGENT_SAFETY_GUIDANCE = `SAFETY-CRITICAL SUBAGENT GUIDANCE:
-• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action: "list" } only for diagnostics, configuration changes, or unknown-role recovery.
-• Keep execution and management separate: omit action for SINGLE/PARALLEL/CHAIN execution; use action only for list/get/models/create/update/delete/status/interrupt/stop/resume/append-step/doctor.
-• Async/background runs: launch with async:true only when work can proceed independently. Do not sleep or poll status just to wait; if this turn must block, use the wait tool. Otherwise continue useful work or respond and let completion notifications arrive.
-• Child-safety boundary: ordinary child subagents are not orchestrators and must not run subagents. Only explicitly configured fanout children may use the child-safe subagent tool, still bounded by depth/session limits.
-• Writing/review safety: keep one writer for the same cwd/worktree. Use fresh-context read-only reviewers/validators for independent review, then have the parent synthesize and apply fixes as the sole writer unless an isolated worktree was intentionally requested.
-• Artifacts/status essentials: chain outputs live under {chain_dir}; async runs expose asyncId/asyncDir with status.json, events.jsonl, output logs, and status via { action: "status", id }. Include output paths and residual risks when reporting results.`;
+• Dispatch a known generated project role directly. Runtime authorizes caller-to-role edges before a child starts; list is never required.
+• Generated Manager and nested roles do not receive proactive generic-role or skill suggestions. A nested role may dispatch only its declared leaf children; leaves cannot dispatch.
+• Generated roles use their generated effective model. Per-call model overrides cannot bypass it.
+• Launch async work only when it can proceed independently. Optional full disclosure contains diagnostics, controls, chains, budgets, and administration.`;
 
 export const FULL_SUBAGENT_TOOL_DESCRIPTION = `Delegate to subagents or manage agent definitions.
 
 EXECUTION (use exactly ONE mode):
-• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action: "list" } only for diagnostics, configuration changes, or unknown-role recovery.
+• Dispatch known generated project roles directly; runtime rejects unknown, disabled, built-in, manager, and unauthorized targets before any child starts. List is diagnostic-only.
 • SINGLE: { agent, task? } - one task; omit task for self-contained agents
 • CHAIN: { chain: [{agent:"agent-a"}, {parallel:[{agent:"agent-b",count:3}]}] } - sequential pipeline with optional parallel fan-out
 • PARALLEL: { tasks: [{agent,task,count?,output?,reads?,progress?}, ...], concurrency?: number, worktree?: true } - concurrent execution (worktree: isolate each task in a git worktree)
 • Optional context: { context: "fresh" | "fork" } (explicit value overrides every child; when omitted, each requested agent uses its own defaultContext, otherwise "fresh")
 • Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. timeoutMs and maxRuntimeMs are run-level aliases.
-• When proactive skill subagent suggestions are available, consider a small fresh-context fanout for broad tasks where one of those skills would materially help
 
 CHAIN TEMPLATE VARIABLES (use in task strings):
 • {task} - The original task/request from the user
@@ -68,23 +65,14 @@ DIAGNOSTICS:
 
 ${SUBAGENT_SAFETY_GUIDANCE}`;
 
-export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate focused work to configured subagents. Use exactly one mode per call.
+export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate one focused task to a known generated project role.
 
-EXECUTE:
-• Dispatch known configured roles directly; runtime rejects unknown or disabled names. Use { action:"list" } only for diagnostics, configuration changes, or unknown-role recovery.
-• SINGLE {agent, task?}; PARALLEL {tasks:[{agent,task,count?,output?,reads?,progress?}], concurrency?, worktree?}; CHAIN {chain:[{agent,task?},{parallel:[...]}]}.
-• context is "fresh" or "fork"; omitted uses each role defaultContext, otherwise fresh. Budgets are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget.
-• Chain templates may use {task}, {previous}, {chain_dir}, and named outputs. Worktrees require clean git repos.
+DIRECT LAUNCH: { agent: "known-role", task?: "...", async?: true, context?: "fresh" | "fork" }.
+Do not list first: generated packets own role names and descriptions, and runtime rejects unavailable or unauthorized targets before any child starts. async:true returns promptly for independent work.
 
-CONTROL:
-• Use action without execution fields. Common actions: list, get, status, interrupt, stop, resume, steer, append-step, doctor.
-• async:true detaches independent work. Do not poll just to wait; use subagent_wait only when this turn must block. Status and artifacts are available through { action:"status", id:"..." }.
+${SUBAGENT_SAFETY_GUIDANCE}
 
-SAFETY:
-• Ordinary child subagents are not orchestrators. Only explicit fanout children may use child-safe subagent, bounded by depth/session limits.
-• Keep one writer per cwd/worktree. Use fresh read-only review/validation fanout, then synthesize and apply fixes from the parent unless isolated worktrees were intentionally requested.
-
-Set toolDescriptionMode:"full" for administration, configuration, scheduling, and the complete parameter reference.`;
+Set toolDescriptionMode:"full" for optional diagnostics, controls, chains/fanout, budgets, scheduling, administration, and the complete parameter reference.`;
 
 function isToolDescriptionMode(value: unknown): value is ToolDescriptionMode {
 	return value === "full" || value === "compact" || value === "custom";

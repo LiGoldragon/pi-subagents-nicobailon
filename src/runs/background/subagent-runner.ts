@@ -1086,6 +1086,7 @@ async function runSingleStep(
 			structuredOutput: effectiveStructuredOutput,
 			toolBudget: step.toolBudget,
 			childWatchdog,
+			projectRole: step.projectRole,
 		});
 		const run = await runPiStreaming(
 			args,

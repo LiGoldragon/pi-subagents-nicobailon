@@ -345,9 +345,13 @@ const SubagentParamsSchema = Type.Object({
 	acceptance: Type.Optional(AcceptanceOverride),
 });
 
+const MINIMAL_LAUNCH_PARAMETERS = new Set(["agent", "task", "async", "context"]);
+
 function buildCompactSubagentParams() {
 	const compact = keepTopLevelParameterDescriptions(SubagentParamsSchema) as { properties?: Record<string, unknown> };
-	for (const parameter of FULL_MODE_ONLY_PARAMETERS) delete compact.properties?.[parameter];
+	for (const parameter of Object.keys(compact.properties ?? {})) {
+		if (!MINIMAL_LAUNCH_PARAMETERS.has(parameter)) delete compact.properties?.[parameter];
+	}
 	return compact;
 }
 
@@ -357,7 +361,7 @@ export function buildSubagentParams(mode: ToolDescriptionMode | undefined = "com
 		: buildCompactSubagentParams();
 }
 
-/** Compact schema for ordinary parent and child-safe fanout registration. */
+/** Minimal direct-launch schema registered by default; full/custom opt into controls. */
 export const SubagentParams = buildSubagentParams();
 /** Complete schema for explicit full/custom parent registrations. */
 export const FullSubagentParams = buildSubagentParams("full");
