@@ -51,6 +51,11 @@ interface SubagentResult {
 	gistUrl?: string;
 	shareError?: string;
 	results?: ChainStepResult[];
+	nestedChildren?: Array<{ state?: string; children?: unknown; steps?: Array<{ children?: unknown }> }>;
+	notification?: {
+		owner?: "top-level" | "nested";
+		visibility?: "owner" | "child";
+	};
 	taskIndex?: number;
 	totalTasks?: number;
 	sessionId?: string | null;
@@ -154,15 +159,39 @@ function completionBatchKey(result: SubagentResult): string {
 	return cwd ? `cwd:${cwd}` : "unknown";
 }
 
+function nestedFailureNeedsAttention(children: SubagentResult["nestedChildren"]): boolean {
+	for (const child of children ?? []) {
+		if (child.state === "failed" || child.state === "paused" || child.state === "stopped") return true;
+		if (nestedFailureNeedsAttention(Array.isArray(child.children) ? child.children as SubagentResult["nestedChildren"] : undefined)) return true;
+		for (const step of child.steps ?? []) {
+			if (nestedFailureNeedsAttention(Array.isArray(step.children) ? step.children as SubagentResult["nestedChildren"] : undefined)) return true;
+		}
+	}
+	return false;
+}
+
+function completionSummary(result: SubagentResult, attentionRequired: boolean): string {
+	const rawSummary = typeof result.summary === "string" ? result.summary : "";
+	const summary = rawSummary.trim();
+	const fallback = attentionRequired
+		? "A nested child needs attention. Inspect the accountable background run for its result."
+		: result.success
+			? "Completed without a textual summary. Inspect the accountable background run for details."
+			: "Failed without a textual summary. Inspect the accountable background run for details.";
+	if (!summary || summary === "(no output)") return fallback;
+	return attentionRequired ? `${rawSummary}\n\n${fallback}` : rawSummary;
+}
+
 export function buildCompletionDetails(result: SubagentResult): SubagentNotifyDetails {
 	const agent = result.agent ?? "unknown";
 	const summary = typeof result.summary === "string" ? result.summary : "";
-	const paused = !result.success && (
+	const nestedAttentionRequired = nestedFailureNeedsAttention(result.nestedChildren);
+	const paused = !nestedAttentionRequired && !result.success && (
 		result.exitCode === 0
 		|| result.state === "paused"
 		|| summary.startsWith("Paused after interrupt.")
 	);
-	const status = paused ? "paused" : result.success ? "completed" : "failed";
+	const status = paused ? "paused" : result.success && !nestedAttentionRequired ? "completed" : "failed";
 
 	const taskInfo =
 		result.taskIndex !== undefined && result.totalTasks !== undefined
@@ -183,7 +212,7 @@ export function buildCompletionDetails(result: SubagentResult): SubagentNotifyDe
 		status,
 		...(result.source ? { source: result.source } : {}),
 		...(taskInfo ? { taskInfo } : {}),
-		resultPreview: summary,
+		resultPreview: completionSummary(result, nestedAttentionRequired),
 		...(typeof result.durationMs === "number" ? { durationMs: result.durationMs } : {}),
 		...(session ? { sessionLabel: session.label, sessionValue: session.value } : {}),
 	};
@@ -229,6 +258,7 @@ export default function registerSubagentNotify(
 	const handleComplete = (data: unknown) => {
 		const result = data as SubagentResult;
 		if (typeof result.sessionId !== "string" || result.sessionId !== state.currentSessionId) return;
+		if (result.notification?.owner === "nested" && result.notification.visibility !== "child") return;
 		const now = nowFn();
 		const key = buildCompletionKey(result, "notify");
 		if (markSeenWithTtl(seen, key, now, ttlMs)) return;

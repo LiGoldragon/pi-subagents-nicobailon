@@ -4,6 +4,7 @@ import * as path from "node:path";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { type AgentConfig, type AgentScope } from "../../agents/agents.ts";
+import { authorizeProjectRoleDispatch, discoverRootManagerPolicy, type CallerRolePolicy } from "../../agents/project-role-policy.ts";
 import { getArtifactsDir, getProjectChainRunsDir } from "../../shared/artifacts.ts";
 import { ChainClarifyComponent, type ChainClarifyResult } from "./chain-clarify.ts";
 import { toModelInfo, type ModelInfo } from "../../shared/model-info.ts";
@@ -177,6 +178,7 @@ export interface SubagentParamsLike {
 }
 
 interface ExecutorDeps {
+	callerRolePolicy?: CallerRolePolicy;
 	pi: ExtensionAPI;
 	state: SubagentState;
 	config: ExtensionConfig;
@@ -260,6 +262,14 @@ function formatForegroundActivity(control: SubagentState["foregroundControls"] e
 	if (control.currentActivityState === "needs_attention") return [`no activity for ${seconds}s`, ...facts].join(" | ");
 	if (control.currentActivityState === "active_long_running") return [`active but long-running; last activity ${seconds}s ago`, ...facts].join(" | ");
 	return [`active ${seconds}s ago`, ...facts].join(" | ");
+}
+
+function callerPolicyFor(deps: ExecutorDeps, cwd: string): CallerRolePolicy | undefined {
+	return deps.callerRolePolicy ?? discoverRootManagerPolicy(deps.discoverAgents(cwd, "both").agents);
+}
+
+function projectRolePolicyConfigFor(deps: ExecutorDeps) {
+	return deps.config.projectRolePolicy;
 }
 
 function nestedResolutionScopeForExecutor(deps: ExecutorDeps): NestedRunResolutionScope | undefined {
@@ -783,6 +793,8 @@ function appendStepToAsyncChain(input: {
 	const scope: AgentScope = resolveExecutionAgentScope(input.params.agentScope);
 	const discoveredForAppend = input.deps.discoverAgents(input.requestCwd, scope);
 	const agents = discoveredForAppend.agents;
+	const appendAuthorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(input.deps, input.requestCwd), agents, targetNames: collectRequestedAgentNames({ chain: input.params.chain }), hasPerCallModelOverride: hasPerCallModelOverride({ chain: input.params.chain }), policyConfig: projectRolePolicyConfigFor(input.deps) });
+	if (appendAuthorizationError) return { content: [{ type: "text", text: appendAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
 	const contextPolicy = resolveExplicitContextPolicy(input.params);
 	const chainSkillInput = normalizeSkillInput(input.params.skill);
 	const chainSkills = chainSkillInput === false ? [] : (chainSkillInput ?? []);
@@ -1047,6 +1059,20 @@ async function resumeAsyncRun(input: {
 	}
 	input.deps.state.currentSessionId = resolveCurrentSessionId(input.ctx.sessionManager);
 
+	// Foreground runs are not attachable. Authorize their root and every proposed
+	// append target before reporting that source limitation, so policy failures
+	// remain atomic and do not depend on async-run lookup.
+	const requestedForeground = input.params.id ?? input.params.runId
+		? input.deps.state.foregroundRuns?.get(input.params.id ?? input.params.runId!)
+		: undefined;
+	if (attachChain && requestedForeground) {
+		const rootAgent = requestedForeground.children[0]?.agent;
+		const resumeAgents = input.deps.discoverAgents(input.requestCwd, resolveExecutionAgentScope(input.params.agentScope)).agents;
+		const attachAuthorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(input.deps, input.requestCwd), agents: resumeAgents, targetNames: [...(rootAgent ? [rootAgent] : []), ...collectRequestedAgentNames({ chain: attachChain })], hasPerCallModelOverride: hasPerCallModelOverride({ chain: attachChain }), policyConfig: projectRolePolicyConfigFor(input.deps) });
+		if (attachAuthorizationError) return { content: [{ type: "text", text: attachAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
+		return { content: [{ type: "text", text: "Attaching a running subagent as a chain root is currently available for async runs only." }], isError: true, details: { mode: "management", results: [] } };
+	}
+
 	let target: ResumeSourceTarget;
 	const parentSessionFile = input.ctx.sessionManager.getSessionFile() ?? null;
 	try {
@@ -1082,6 +1108,10 @@ async function resumeAsyncRun(input: {
 		const message = error instanceof Error ? error.message : String(error);
 		return { content: [{ type: "text", text: message }], isError: true, details: { mode: "management", results: [] } };
 	}
+
+	const resumeAgents = input.deps.discoverAgents(input.requestCwd, resolveExecutionAgentScope(input.params.agentScope)).agents;
+	const resumeAuthorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(input.deps, input.requestCwd), agents: resumeAgents, targetNames: [target.agent], hasPerCallModelOverride: hasPerCallModelOverride(input.params), policyConfig: projectRolePolicyConfigFor(input.deps) });
+	if (resumeAuthorizationError) return { content: [{ type: "text", text: resumeAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
 
 	if (target.kind === "live" && !attachChain) {
 		const interrupt = interruptLiveAsyncResumeTarget({
@@ -1162,6 +1192,8 @@ async function resumeAsyncRun(input: {
 	}
 
 	if (attachChain) {
+		const attachAuthorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(input.deps, effectiveCwd), agents: discoveredAgents, targetNames: [target.agent, ...collectRequestedAgentNames({ chain: attachChain })], hasPerCallModelOverride: hasPerCallModelOverride({ chain: attachChain }), policyConfig: projectRolePolicyConfigFor(input.deps) });
+		if (attachAuthorizationError) return { content: [{ type: "text", text: attachAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
 		if (target.source !== "async") {
 			return {
 				content: [{ type: "text", text: "Attaching a running subagent as a chain root is currently available for async runs only." }],
@@ -1566,6 +1598,16 @@ function collectRequestedAgentNames(params: SubagentParamsLike): string[] {
 	for (const task of params.tasks ?? []) names.push(task.agent);
 	for (const step of params.chain ?? []) names.push(...getStepAgents(step));
 	return names;
+}
+
+function hasPerCallModelOverride(params: SubagentParamsLike): boolean {
+	return Boolean(params.model)
+		|| (params.tasks ?? []).some((task) => Boolean(task.model))
+		|| (params.chain ?? []).some((step) => {
+			if ((step as { model?: string }).model) return true;
+			if (isParallelStep(step)) return step.parallel.some((task) => Boolean(task.model));
+			return isDynamicParallelStep(step) && Boolean(step.parallel.model);
+		});
 }
 
 function shouldForkAgent(contextPolicy: AgentDefaultContextPolicy, agentName: string): boolean {
@@ -3387,6 +3429,11 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 				return appendStepToAsyncChain({ params: paramsWithResolvedCwd, requestCwd, ctx, deps });
 			}
 			if (action === "schedule" || action === "schedule-list" || action === "schedule-status" || action === "schedule-cancel") {
+				if (action === "schedule") {
+					const scheduledAgents = deps.discoverAgents(requestCwd, resolveExecutionAgentScope(paramsWithResolvedCwd.agentScope)).agents;
+					const scheduleAuthorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(deps, requestCwd), agents: scheduledAgents, targetNames: collectRequestedAgentNames(paramsWithResolvedCwd), hasPerCallModelOverride: hasPerCallModelOverride(paramsWithResolvedCwd), policyConfig: projectRolePolicyConfigFor(deps) });
+					if (scheduleAuthorizationError) return { content: [{ type: "text", text: scheduleAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
+				}
 				if (!deps.handleScheduledRunAction) {
 					return {
 						content: [{ type: "text", text: `Action '${action}' is not available in this subagent context.` }],
@@ -3531,6 +3578,8 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		const discovered = deps.discoverAgents(effectiveCwd, scope);
 		const discoveredAgents = discovered.agents;
 		const modelScope = discovered.modelScope;
+		const authorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(deps, effectiveCwd), agents: discoveredAgents, targetNames: collectRequestedAgentNames(effectiveParams), hasPerCallModelOverride: hasPerCallModelOverride(effectiveParams) || effectiveParams.clarify === true, policyConfig: projectRolePolicyConfigFor(deps) });
+		if (authorizationError) return buildRequestedModeError(effectiveParams, authorizationError);
 		effectiveParams = applySingleAgentLaunchDefaults(effectiveParams, discoveredAgents);
 		const foregroundTimeout = resolveForegroundTimeout(effectiveParams);
 		if (foregroundTimeout.error) return buildRequestedModeError(effectiveParams, foregroundTimeout.error);

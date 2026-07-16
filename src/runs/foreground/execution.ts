@@ -239,6 +239,7 @@ async function runSingleAttempt(
 		toolBudget: options.toolBudget,
 		childWatchdog,
 		waitToolEnabled: options.waitToolEnabled,
+		projectRole: agent.projectRole,
 	});
 
 	const result: SingleResult = {

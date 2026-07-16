@@ -44,6 +44,7 @@ export interface RunnerSubagentStep {
 	acceptanceInput?: import("../../shared/types.ts").AcceptanceInput;
 	acceptanceRole?: import("../../shared/types.ts").AcceptanceRole;
 	toolBudget?: import("../../shared/types.ts").ResolvedToolBudget;
+	projectRole?: import("../../agents/project-role-policy.ts").ProjectRoleMetadata;
 }
 
 export interface ParallelStepGroup {

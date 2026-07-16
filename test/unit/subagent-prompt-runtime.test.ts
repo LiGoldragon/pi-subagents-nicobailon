@@ -359,11 +359,18 @@ describe("subagent prompt runtime", () => {
 		}
 	});
 
-	it("strips only the project context block", () => {
-		const rewritten = stripProjectContext(BASE_PROMPT);
-		assert.ok(!rewritten.includes("# Project Context"));
-		assert.ok(rewritten.includes("The following skills provide specialized instructions for specific tasks."));
-		assert.ok(rewritten.includes("Current date: 2026-04-16"));
+	it("strips legacy and Pi 0.80.7 project context blocks", () => {
+		const legacy = stripProjectContext(BASE_PROMPT);
+		assert.ok(!legacy.includes("# Project Context"));
+		assert.ok(legacy.includes("The following skills provide specialized instructions for specific tasks."));
+		assert.ok(legacy.includes("Current date: 2026-04-16"));
+
+		const modern = stripProjectContext(`Before\n<project_context>private project instructions</project_context>\nAfter${SKILLS_SECTION}`);
+		assert.ok(!modern.includes("<project_context>"));
+		assert.ok(!modern.includes("private project instructions"));
+		assert.ok(modern.includes("Before"));
+		assert.ok(modern.includes("After"));
+		assert.ok(modern.includes("<available_skills>"));
 	});
 
 	it("strips only the inherited skills block", () => {

@@ -8,6 +8,7 @@ import {
 	buildSkillInjection,
 	clearSkillCache,
 	discoverAvailableSkills,
+	resolveSkillPath,
 	resolveSkills,
 	resolveSkillsWithFallback,
 } from "../../src/agents/skills.ts";
@@ -218,9 +219,14 @@ describe("skills filesystem fallback", () => {
 		assert.match(injection, /amp&amp;skill[\\/]SKILL\.md/);
 	});
 
-	it("does not expose pi-subagents as a child-injectable skill", () => {
-		makeProjectSkill(tempDir, "pi-subagents", "Parent orchestration only.");
+	it("loads the packaged parent skill without exposing it to child injection", () => {
+		makeProjectPackageSkill(tempDir, "pi-subagents", "pi-subagents", "Parent orchestration only.");
 		makeProjectSkill(tempDir, "safe-bash", "Use safe bash.");
+
+		const parentSkill = resolveSkillPath("pi-subagents", tempDir);
+		assert.ok(parentSkill, "the package loader should discover the parent skill without a warning path");
+		assert.equal(parentSkill.source, "project-package");
+		assert.match(parentSkill.path, /pi-subagents[\\/]skills[\\/]pi-subagents[\\/]SKILL\.md$/);
 
 		const available = discoverAvailableSkills(tempDir).map((skill) => skill.name);
 		assert.equal(available.includes("pi-subagents"), false);

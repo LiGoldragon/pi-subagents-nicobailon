@@ -1289,9 +1289,23 @@ After a worktree parallel step completes, per-agent diff stats are appended to t
 { "toolDescriptionMode": "compact" }
 ```
 
-Controls the parent-facing `subagent` tool description registered at startup. `full` is the default. `compact` keeps the execution modes, async/`subagent_wait` guidance, child-safety boundary, management/action split, one-writer review guidance, and artifact/status essentials with less prompt bloat.
+Controls the parent-facing `subagent` tool description registered at startup. `compact` is the default minimal direct-launch surface: `{ agent, task?, async?, context? }`. Generated packets own role names and descriptions, so dispatch never requires a preliminary list call. Lists, status/transcripts, wait, controls, chains/fanout, budgets, acceptance overrides, worktrees, scheduling, administration, watchdogs, and their parameter schemas are opt-in through `full`. The measured minimal registered surface (description plus serialized schema) is 1,741 characters, reduced by 12,736 characters from the fork-main 14,477-character baseline.
 
-`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. Missing, empty, unreadable, or oversized custom files fall back to the full description. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
+`custom` reads `subagent-tool-description.md` from the project config directory, then from `~/.pi/agent/subagent-tool-description.md`. A valid custom mode retains the complete parameter schema; missing, empty, unreadable, or oversized custom files fall back to the compact description and compact schema. Custom templates may use `{{fullDescription}}`, `{{compactDescription}}`, `{{safetyGuidance}}`, `{{agentDir}}`, and `{{projectConfigDir}}`; the safety guidance is always present so custom prose cannot remove the runtime guardrails. Restart Pi after changing the mode or custom file.
+
+### `projectRolePolicy`
+
+Managed generated-role deployments must fail closed when their Manager or nested packet is missing or malformed:
+
+```json
+{ "projectRolePolicy": { "required": true } }
+```
+
+Generated frontmatter must provide exact `projectRoleIdentity`, `projectRoleDispatchKind` (`manager`, `nested`, or `leaf`), and, for nested roles, `allowedChildRoleNames`. Missing or malformed metadata never falls back to unrestricted fanout in this mode. Existing top-level non-project workflows remain upstream-compatible; every legacy metadata-free child fanout requires explicit `allowLegacyNonProject: true` outside managed deployment:
+
+```json
+{ "projectRolePolicy": { "allowLegacyNonProject": true } }
+```
 
 ### `asyncByDefault`
 
