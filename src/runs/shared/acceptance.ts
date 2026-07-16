@@ -383,7 +383,7 @@ export function formatAcceptancePrompt(acceptance: ResolvedAcceptanceConfig): st
 		"Finish with a fenced JSON block tagged `acceptance-report` in this shape:",
 		"Use empty arrays when no items apply; array fields contain strings unless object entries are shown.",
 		"`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.",
-		"`commandsRun[].result` must be exactly one of: passed, failed, not-run.",
+		"`commandsRun[].result` must be exactly one of: passed, failed, blocked, not-run.",
 		"`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.",
 		"```acceptance-report",
 		JSON.stringify({
@@ -477,6 +477,7 @@ function normalizeCommandResult(value: unknown): unknown {
 	const token = normalizedToken(value);
 	if (["passed", "pass", "success", "successful", "succeeded", "ok"].includes(token)) return "passed";
 	if (["failed", "fail", "failure", "error"].includes(token)) return "failed";
+	if (["blocked", "block", "waiting", "awaiting-approval"].includes(token)) return "blocked";
 	if (["not-run", "not-executed", "skip", "skipped"].includes(token)) return "not-run";
 	return value;
 }
@@ -1018,10 +1019,10 @@ export async function evaluateAcceptance(input: {
 	output: string;
 	cwd: string;
 	/**
-	 * Content the child sent to its configured output file (from its own write
-	 * tool calls, not from disk, so a concurrent writer to the same path cannot
-	 * be misattributed). Searched for the acceptance report; searched before
-	 * the assistant output when `authoritative` (outputMode "file-only").
+	 * Content resolved from the configured output file after the child exits.
+	 * Searched before assistant output when `authoritative` (outputMode
+	 * "file-only"); failed resolution leaves this absent and preserves the
+	 * normal assistant-output fallback.
 	 */
 	fileOutput?: { content: string; path: string; authoritative?: boolean };
 	report?: AcceptanceReport;

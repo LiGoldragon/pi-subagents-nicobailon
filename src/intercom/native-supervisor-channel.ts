@@ -288,7 +288,7 @@ function hasTool(pi: ExtensionAPI, name: string): boolean {
 }
 
 export function registerNativeSupervisorClient(pi: ExtensionAPI, options: { includeIntercomFallback?: boolean } = {}): void {
-	if (!readChildMetadata()) return;
+	if (!readChildMetadata() || typeof pi.registerTool !== "function") return;
 	const includeIntercomFallback = options.includeIntercomFallback !== false;
 	if (!hasTool(pi, "contact_supervisor")) {
 		const tool: ToolDefinition<typeof ContactSupervisorParamsSchema, Record<string, unknown>> = {

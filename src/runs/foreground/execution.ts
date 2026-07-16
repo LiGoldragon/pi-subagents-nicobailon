@@ -53,7 +53,7 @@ import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit
 import { applyThinkingSuffix, buildPiArgs, cleanupTempDir } from "../shared/pi-args.ts";
 import { readStructuredOutput } from "../shared/structured-output.ts";
 import { readChildToolDiagnosticError } from "../shared/tool-availability.ts";
-import { captureSingleOutputSnapshot, extractChildWrittenOutput, formatSavedOutputReference, injectOutputPathSystemPrompt, resolveSingleOutput, validateFileOnlyOutputMode, type SingleOutputSnapshot } from "../shared/single-output.ts";
+import { captureSingleOutputSnapshot, formatSavedOutputReference, injectOutputPathSystemPrompt, resolveSingleOutput, validateFileOnlyOutputMode, type SingleOutputSnapshot } from "../shared/single-output.ts";
 import {
 	buildModelCandidates,
 	formatModelAttemptNote,
@@ -85,6 +85,7 @@ import {
 
 const artifactOutputByResult = new WeakMap<SingleResult, string>();
 const acceptanceOutputByResult = new WeakMap<SingleResult, string>();
+const acceptanceFileOutputByResult = new WeakMap<SingleResult, { content: string; path: string; authoritative: boolean }>();
 
 function emptyUsage(): Usage {
 	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 };
@@ -912,6 +913,11 @@ async function runSingleAttempt(
 					recoveredResult.savedOutputPath = resolvedOutput.savedPath;
 					recoveredResult.outputSaveError = resolvedOutput.saveError;
 					if (resolvedOutput.savedPath) {
+						acceptanceFileOutputByResult.set(recoveredResult, {
+							content: resolvedOutput.fullOutput,
+							path: resolvedOutput.savedPath,
+							authoritative: options.outputMode === "file-only",
+						});
 						recoveredResult.outputReference = formatSavedOutputReference(resolvedOutput.savedPath, fullOutput);
 					} else {
 						recoveredResult.exitCode = 1;
@@ -1117,6 +1123,11 @@ async function runSingleAttempt(
 			result.savedOutputPath = resolvedOutput.savedPath;
 			result.outputSaveError = resolvedOutput.saveError;
 			if (resolvedOutput.savedPath) {
+				acceptanceFileOutputByResult.set(result, {
+					content: resolvedOutput.fullOutput,
+					path: resolvedOutput.savedPath,
+					authoritative: options.outputMode === "file-only",
+				});
 				result.outputReference = formatSavedOutputReference(resolvedOutput.savedPath, fullOutput);
 			}
 	}
@@ -1274,6 +1285,8 @@ export async function runSync(
 			modelAttempts: target.modelAttempts,
 			durationMs: target.progressSummary?.durationMs,
 			toolCount: target.progressSummary?.toolCount,
+			processExitCode: target.processExitCode,
+			processSuccess: target.processSuccess,
 			error: target.error,
 			acceptance: target.acceptance,
 			...(transcriptWriter ? { transcriptPath: artifactPathsResult.transcriptPath } : {}),
@@ -1289,15 +1302,10 @@ export async function runSync(
 			...options,
 			onDetachedExit: (recoveredResult) => {
 				void (async () => {
-					const childWrittenOutput = options.outputPath
-						? extractChildWrittenOutput(recoveredResult.messages, options.outputPath, options.cwd ?? runtimeCwd)
-						: undefined;
 					recoveredResult.acceptance = await evaluateAcceptance({
 						acceptance: effectiveAcceptance,
 						output: acceptanceOutputByResult.get(recoveredResult) ?? recoveredResult.finalOutput ?? "",
-						fileOutput: childWrittenOutput !== undefined && options.outputPath
-							? { content: childWrittenOutput, path: options.outputPath, authoritative: options.outputMode === "file-only" }
-							: undefined,
+						fileOutput: acceptanceFileOutputByResult.get(recoveredResult),
 						cwd: options.cwd ?? runtimeCwd,
 					});
 					const acceptanceFailure = acceptanceFailureMessage(recoveredResult.acceptance);
@@ -1418,10 +1426,6 @@ export async function runSync(
 
 	result.processExitCode = result.exitCode;
 	result.processSuccess = result.exitCode === 0 && !result.error;
-
-	const childWrittenOutput = options.outputPath
-		? extractChildWrittenOutput(result.messages, options.outputPath, options.cwd ?? runtimeCwd)
-		: undefined;
 	if (result.detached) {
 		result.acceptance = buildPendingAcceptanceLedger(effectiveAcceptance);
 	} else if (result.stopped) {
@@ -1434,9 +1438,7 @@ export async function runSync(
 		result.acceptance = await evaluateAcceptance({
 			acceptance: effectiveAcceptance,
 			output: acceptanceOutputByResult.get(result) ?? result.finalOutput ?? "",
-			fileOutput: childWrittenOutput !== undefined && options.outputPath
-				? { content: childWrittenOutput, path: options.outputPath, authoritative: options.outputMode === "file-only" }
-				: undefined,
+			fileOutput: acceptanceFileOutputByResult.get(result),
 			cwd: options.cwd ?? runtimeCwd,
 		});
 	}

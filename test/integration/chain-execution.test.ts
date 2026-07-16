@@ -698,7 +698,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		assert.deepEqual(dynamicNode?.children?.map((child) => child.acceptanceStatus), ["checked", "checked"]);
 	});
 
-	it("applies read-only acceptance roles to dynamic children and their aggregate group", async () => {
+	it("applies read-only acceptance roles to dynamic children without inventing an aggregate gate", async () => {
 		mockPi.onCall({
 			output: "targets",
 			structuredOutput: { items: [{ path: "src/a.ts" }, { path: "src/b.ts" }] },
@@ -733,11 +733,11 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		const explorerResults = result.details.results.filter((child) => child.agent === "explorer");
 		assert.deepEqual(explorerResults.map((child) => child.acceptance?.effectiveAcceptance.level), ["attested", "attested"]);
 		const dynamicNode = result.details.workflowGraph?.nodes[1];
-		assert.equal(dynamicNode?.acceptanceStatus, "attested");
+		assert.equal(dynamicNode?.acceptanceStatus, undefined);
 		assert.deepEqual(dynamicNode?.children?.map((child) => child.acceptanceStatus), ["attested", "attested"]);
 	});
 
-	it("infers foreground dynamic acceptance after materializing item templates", async () => {
+	it("keeps inferred foreground dynamic acceptance on materialized children", async () => {
 		mockPi.onCall({
 			output: "targets",
 			structuredOutput: { items: [{ path: "src/a.ts" }, { path: "src/b.ts" }] },
@@ -765,7 +765,7 @@ describe("chain execution — sequential", { skip: !available ? "pi packages not
 		const explorerResults = result.details.results.filter((child) => child.agent === "explorer");
 		assert.deepEqual(explorerResults.map((child) => child.acceptance?.effectiveAcceptance.level), ["reviewed", "reviewed"]);
 		const dynamicNode = result.details.workflowGraph?.nodes[1];
-		assert.equal(dynamicNode?.acceptanceStatus, "rejected");
+		assert.equal(dynamicNode?.acceptanceStatus, undefined);
 		assert.deepEqual(dynamicNode?.children?.map((child) => child.acceptanceStatus), ["rejected", "rejected"]);
 	});
 

@@ -167,7 +167,7 @@ describe("acceptance gates", () => {
 		assert.match(prompt, /```acceptance-report/);
 		assert.match(prompt, /array fields contain strings/);
 		assert.match(prompt, /criteriaSatisfied\[\]\.status.*satisfied, not-satisfied, not-applicable/);
-		assert.match(prompt, /commandsRun\[\]\.result.*passed, failed, not-run/);
+		assert.match(prompt, /commandsRun\[\]\.result.*passed, failed, blocked, not-run/);
 		assert.match(prompt, /manualNotes.*optional strings.*empty string.*does not satisfy.*manual-notes/);
 		assert.match(prompt, /"reviewFindings": \[\n    "blocker:/);
 	});
@@ -680,7 +680,7 @@ describe("acceptance gates", () => {
 		}
 	});
 
-	it("keeps inferred review non-blocking when explicit auto is supplied", async () => {
+	it("keeps inferred review strict when explicit auto is supplied", async () => {
 		const cwd = tempRepo();
 		try {
 			for (const explicit of ["auto", { level: "auto" }] as const) {
@@ -697,7 +697,7 @@ describe("acceptance gates", () => {
 					{ id: "criterion-1", status: "satisfied", evidence: "implemented" },
 					{ id: "criterion-2", status: "satisfied", evidence: "evidence returned" },
 				] }), cwd });
-				assert.equal(ledger.status, "checked");
+				assert.equal(ledger.status, "rejected");
 				assert.equal(ledger.reviewResult?.status, "needs-parent-decision");
 			}
 		} finally {
