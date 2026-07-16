@@ -502,7 +502,7 @@ export interface AcceptanceReport {
 	testsAddedOrUpdated?: string[];
 	commandsRun?: Array<{
 		command: string;
-		result: "passed" | "failed" | "not-run";
+		result: "passed" | "failed" | "blocked" | "not-run";
 		summary: string;
 	}>;
 	validationOutput?: string[];
@@ -585,6 +585,9 @@ export interface SingleResult {
 	agent: string;
 	task: string;
 	exitCode: number;
+	/** Child process outcome before acceptance reconciliation changes the result contract. */
+	processExitCode?: number;
+	processSuccess?: boolean;
 	detached?: boolean;
 	detachedReason?: string;
 	interrupted?: boolean;

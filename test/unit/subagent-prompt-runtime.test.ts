@@ -596,6 +596,11 @@ describe("subagent prompt runtime", () => {
 	});
 
 	it("records and explains requested tools missing from the child registry", async () => {
+		// This diagnostic concerns the child registry, not inherited parent prompt
+		// policy. Keep it independent of a host that is itself a subagent.
+		delete process.env.PI_SUBAGENT_INHERIT_PROJECT_CONTEXT;
+		delete process.env.PI_SUBAGENT_INHERIT_SKILLS;
+		delete process.env.PI_SUBAGENT_FANOUT_CHILD;
 		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "subagent-tool-diagnostic-"));
 		try {
 			const diagnosticPath = path.join(dir, "tools.json");

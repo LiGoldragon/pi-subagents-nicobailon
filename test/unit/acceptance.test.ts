@@ -166,7 +166,7 @@ describe("acceptance gates", () => {
 		assert.match(prompt, /```acceptance-report/);
 		assert.match(prompt, /array fields contain strings/);
 		assert.match(prompt, /criteriaSatisfied\[\]\.status.*satisfied, not-satisfied, not-applicable/);
-		assert.match(prompt, /commandsRun\[\]\.result.*passed, failed, not-run/);
+		assert.match(prompt, /commandsRun\[\]\.result.*passed, failed, blocked, not-run/);
 		assert.match(prompt, /manualNotes.*optional strings.*empty string.*does not satisfy.*manual-notes/);
 		assert.match(prompt, /"reviewFindings": \[\n    "blocker:/);
 	});
@@ -434,7 +434,7 @@ describe("acceptance gates", () => {
 			commandsRun: [{ command: "npm test", exitCode: 0 }],
 		}));
 		assert.equal(invalidCommandReport.report, undefined);
-		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.result: expected one of "passed", "failed", "not-run"; got missing/);
+		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.result: expected one of "passed", "failed", "blocked", "not-run"; got missing/);
 		assert.match(invalidCommandReport.error ?? "", /commandsRun\[0\]\.summary: expected non-empty string; got missing/);
 
 		const invalidCriteriaReport = parseAcceptanceReport(report({
@@ -444,6 +444,14 @@ describe("acceptance gates", () => {
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.id: expected string; got number 7/);
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.status: expected one of "satisfied", "not-satisfied", "not-applicable"; got "maybe"/);
 		assert.match(invalidCriteriaReport.error ?? "", /criteriaSatisfied\[0\]\.evidence: expected non-empty string; got ""/);
+	});
+
+	it("accepts blocked command evidence", () => {
+		const parsed = parseAcceptanceReport(report({
+			commandsRun: [{ command: "lojix deploy", result: "blocked", summary: "waiting for required approval" }],
+		}));
+		assert.equal(parsed.error, undefined);
+		assert.equal(parsed.report?.commandsRun?.[0]?.result, "blocked");
 	});
 
 	it("explicit none disables inferred gates when a reason is present", () => {
@@ -648,7 +656,7 @@ describe("acceptance gates", () => {
 		}
 	});
 
-	it("does not make explicit checked acceptance an explicit reviewed blocker when inference recommends review", async () => {
+	it("keeps inferred reviewed acceptance strict when child evidence lacks a reviewer", async () => {
 		const cwd = tempRepo();
 		try {
 			const acceptance = resolveEffectiveAcceptance({
@@ -664,14 +672,14 @@ describe("acceptance gates", () => {
 				{ id: "criterion-1", status: "satisfied", evidence: "implemented" },
 				{ id: "criterion-2", status: "satisfied", evidence: "evidence returned" },
 			] }), cwd });
-			assert.equal(ledger.status, "checked");
+			assert.equal(ledger.status, "rejected");
 			assert.equal(ledger.reviewResult?.status, "needs-parent-decision");
 		} finally {
 			fs.rmSync(cwd, { recursive: true, force: true });
 		}
 	});
 
-	it("keeps inferred review non-blocking when explicit auto is supplied", async () => {
+	it("keeps inferred review strict when explicit auto is supplied", async () => {
 		const cwd = tempRepo();
 		try {
 			for (const explicit of ["auto", { level: "auto" }] as const) {
@@ -688,7 +696,7 @@ describe("acceptance gates", () => {
 					{ id: "criterion-1", status: "satisfied", evidence: "implemented" },
 					{ id: "criterion-2", status: "satisfied", evidence: "evidence returned" },
 				] }), cwd });
-				assert.equal(ledger.status, "checked");
+				assert.equal(ledger.status, "rejected");
 				assert.equal(ledger.reviewResult?.status, "needs-parent-decision");
 			}
 		} finally {

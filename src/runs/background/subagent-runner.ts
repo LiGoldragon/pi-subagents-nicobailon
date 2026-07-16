@@ -8,7 +8,7 @@ import { createChildTranscriptWriter, type ChildTranscriptWriter } from "../../s
 import { closeSteerInbox, consumeInterruptRequest, consumeSteerRequests, deliverInterruptRequest, deliverStopRequest, deliverTimeoutRequest, enqueueStepSteer, steerAcksDir, steerCapabilityPath, stepSteerInboxDir, watchAsyncControlInbox, type SteerAck, type SteerCapability, type SteerRequest } from "./control-channel.ts";
 import { appendJsonl as appendRawJsonl, getArtifactPaths } from "../../shared/artifacts.ts";
 import { PI_CODING_AGENT_PACKAGE, getPiSpawnCommand, resolveInstalledPiPackageRoot } from "../shared/pi-spawn.ts";
-import { captureSingleOutputSnapshot, extractChildWrittenOutput, finalizeSingleOutput, formatSavedOutputReference, injectOutputPathSystemPrompt, injectSingleOutputInstruction, resolveSingleOutput, type SingleOutputSnapshot } from "../shared/single-output.ts";
+import { captureSingleOutputSnapshot, finalizeSingleOutput, formatSavedOutputReference, injectOutputPathSystemPrompt, injectSingleOutputInstruction, resolveSingleOutput, type SingleOutputSnapshot } from "../shared/single-output.ts";
 import {
 	type ActivityState,
 	type ArtifactConfig,
@@ -155,6 +155,8 @@ interface StepResult {
 	protocolError?: ProtocolOutputLimit;
 	success: boolean;
 	exitCode?: number | null;
+	processExitCode?: number;
+	processSuccess?: boolean;
 	skipped?: boolean;
 	interrupted?: boolean;
 	timedOut?: boolean;
@@ -1283,8 +1285,12 @@ async function runSingleStep(
 		outputForSummary = outputForSummary.trim() ? `${note}\n\n${outputForSummary}` : note;
 	}
 	const outputForAcceptance = rawOutput;
-	const childWrittenOutput = step.outputPath
-		? extractChildWrittenOutput(finalResult?.messages, step.outputPath, step.cwd ?? ctx.cwd)
+	const acceptanceFileOutput = resolvedOutput.savedPath
+		? {
+			content: resolvedOutput.fullOutput,
+			path: resolvedOutput.savedPath,
+			authoritative: step.outputMode === "file-only",
+		}
 		: undefined;
 	const finalizedOutput = finalizeSingleOutput({
 		fullOutput: outputForSummary,
@@ -1300,9 +1306,7 @@ async function runSingleStep(
 		? await evaluateAcceptance({
 			acceptance: step.effectiveAcceptance,
 			output: outputForAcceptance,
-			fileOutput: childWrittenOutput !== undefined && step.outputPath
-				? { content: childWrittenOutput, path: step.outputPath, authoritative: step.outputMode === "file-only" }
-				: undefined,
+			fileOutput: acceptanceFileOutput,
 			cwd: step.cwd ?? ctx.cwd,
 			signal: combinedAbortSignal([ctx.timeoutSignal, ctx.stopSignal]),
 			abortMessage: ctx.stopSignal?.aborted ? ctx.stopMessage ?? "Subagent stopped by user." : ctx.timeoutMessage ?? "Subagent timed out.",
@@ -1348,6 +1352,8 @@ async function runSingleStep(
 					model: finalResult?.model,
 					attemptedModels: attemptedModels.length > 0 ? attemptedModels : undefined,
 					modelAttempts,
+					processExitCode: finalResult?.exitCode ?? 1,
+					processSuccess: (finalResult?.exitCode ?? 1) === 0 && !finalResult?.error,
 					error: effectiveFinalError,
 					acceptance: effectiveAcceptance,
 					...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
@@ -1364,6 +1370,8 @@ async function runSingleStep(
 		agent: step.agent,
 		output: outputForSummary,
 		exitCode: effectiveFinalExitCode,
+		processExitCode: finalResult?.exitCode ?? 1,
+		processSuccess: (finalResult?.exitCode ?? 1) === 0 && !finalResult?.error,
 		error: effectiveFinalError,
 		protocolError: finalResult?.protocolError,
 		sessionFile: step.sessionFile,

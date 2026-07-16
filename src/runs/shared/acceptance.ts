@@ -99,8 +99,7 @@ function inferLevel(input: {
 	const inferredReadOnly = readOnlyTask || (input.acceptanceRole === "read-only" && !taskMayWrite);
 	const roleResolvesReadOnly = input.acceptanceRole !== undefined && inferredReadOnly;
 	const keywordRiskReadOnly = input.acceptanceRole === undefined ? intent.kind === "read-only" : inferredReadOnly;
-	const risky = Boolean(input.async && writeTask)
-		|| (Boolean(input.dynamic) && !roleResolvesReadOnly)
+	const risky = (Boolean(input.dynamic) && !roleResolvesReadOnly)
 		|| (Boolean(input.dynamicGroup) && !roleResolvesReadOnly)
 		|| (!keywordRiskReadOnly && /\b(?:release|migration|migrate|security|data[- ]loss|destructive|post-review|fix pass)\b/.test(task));
 
@@ -384,7 +383,7 @@ export function formatAcceptancePrompt(acceptance: ResolvedAcceptanceConfig): st
 		"Finish with a fenced JSON block tagged `acceptance-report` in this shape:",
 		"Use empty arrays when no items apply; array fields contain strings unless object entries are shown.",
 		"`criteriaSatisfied[].status` must be exactly one of: satisfied, not-satisfied, not-applicable.",
-		"`commandsRun[].result` must be exactly one of: passed, failed, not-run.",
+		"`commandsRun[].result` must be exactly one of: passed, failed, blocked, not-run.",
 		"`manualNotes` and `notes` are optional strings; an empty string means no note and does not satisfy `manual-notes` evidence.",
 		"```acceptance-report",
 		JSON.stringify({
@@ -478,6 +477,7 @@ function normalizeCommandResult(value: unknown): unknown {
 	const token = normalizedToken(value);
 	if (["passed", "pass", "success", "successful", "succeeded", "ok"].includes(token)) return "passed";
 	if (["failed", "fail", "failure", "error"].includes(token)) return "failed";
+	if (["blocked", "block", "waiting", "awaiting-approval"].includes(token)) return "blocked";
 	if (["not-run", "not-executed", "skip", "skipped"].includes(token)) return "not-run";
 	return value;
 }
@@ -810,8 +810,8 @@ function validateAcceptanceReport(value: unknown, pathLabel = ""): { report?: Ac
 				}
 				const command = item as { command?: unknown; result?: unknown; summary?: unknown };
 				if (typeof command.command !== "string" || !command.command.trim()) pushTypeError(errors, `${itemPath}.command`, "non-empty string", command.command);
-				if (command.result !== "passed" && command.result !== "failed" && command.result !== "not-run") {
-					pushTypeError(errors, `${itemPath}.result`, "one of \"passed\", \"failed\", \"not-run\"", command.result);
+				if (command.result !== "passed" && command.result !== "failed" && command.result !== "blocked" && command.result !== "not-run") {
+					pushTypeError(errors, `${itemPath}.result`, "one of \"passed\", \"failed\", \"blocked\", \"not-run\"", command.result);
 				}
 				if (typeof command.summary !== "string" || !command.summary.trim()) pushTypeError(errors, `${itemPath}.summary`, "non-empty string", command.summary);
 			}
@@ -1019,10 +1019,10 @@ export async function evaluateAcceptance(input: {
 	output: string;
 	cwd: string;
 	/**
-	 * Content the child sent to its configured output file (from its own write
-	 * tool calls, not from disk, so a concurrent writer to the same path cannot
-	 * be misattributed). Searched for the acceptance report; searched before
-	 * the assistant output when `authoritative` (outputMode "file-only").
+	 * Content resolved from the configured output file after the child exits.
+	 * Searched before assistant output when `authoritative` (outputMode
+	 * "file-only"); failed resolution leaves this absent and preserves the
+	 * normal assistant-output fallback.
 	 */
 	fileOutput?: { content: string; path: string; authoritative?: boolean };
 	report?: AcceptanceReport;
@@ -1095,16 +1095,15 @@ export async function evaluateAcceptance(input: {
 			ledger.reviewResult = input.reviewResult;
 			ledger.status = input.reviewResult.status === "no-blockers" ? "reviewed" : "rejected";
 		} else {
-			const optionalReview = acceptance.review && acceptance.review !== false && acceptance.review.required === false;
 			ledger.reviewResult = {
 				status: "needs-parent-decision",
 				findings: [{
-					severity: acceptance.explicit && !optionalReview ? "blocker" : "non-blocking",
+					severity: "blocker",
 					issue: "Reviewed acceptance requires an independent reviewer result.",
 					rationale: "The run cannot be marked reviewed from child evidence alone.",
 				}],
 			};
-			if (acceptance.review === false || (acceptance.explicit && !optionalReview)) ledger.status = "rejected";
+			ledger.status = "rejected";
 		}
 	}
 

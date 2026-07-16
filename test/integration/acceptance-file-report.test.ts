@@ -170,6 +170,26 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			assert.equal(result.savedOutputPath, outputPath);
 		});
 
+		it("file-only mode evaluates the resolved authoritative file when no write tool event was captured", async () => {
+			const outputPath = path.join(tempDir, "resolved-report.md");
+			const fileReport = `# Findings\n${acceptanceReport("satisfied", "from resolved authoritative file")}`;
+			mockPi.onCall({
+				jsonl: [events.assistantMessage("The report is saved; see the configured output path.")],
+				writeFiles: [{ path: outputPath, content: fileReport }],
+			});
+
+			const result = await runSync!(tempDir, makeAgentConfigs(["worker"]), "worker", "Write the findings report.", {
+				runId: "acceptance-resolved-authoritative-file",
+				outputPath,
+				outputMode: "file-only",
+				acceptance: { level: "checked", criteria: ["Report the findings"] },
+			});
+
+			assert.equal(result.exitCode, 0);
+			assert.equal(result.acceptance?.status, "checked");
+			assert.equal(result.acceptance?.childReport?.criteriaSatisfied?.[0]?.evidence, "from resolved authoritative file");
+		});
+
 		it("file-only mode persists acceptance metadata when final assistant text is only a receipt", async () => {
 			const outputPath = path.join(tempDir, "saved-review.md");
 			const artifactsDir = path.join(tempDir, "artifacts");
@@ -346,6 +366,22 @@ describe("acceptance file reports", { skip: !runSync ? "pi packages not availabl
 			assert.match(payload.results[0]?.acceptance?.childReport?.criteriaSatisfied?.[0]?.evidence ?? "", /from child-written file/);
 			const status = JSON.parse(fs.readFileSync(path.join(ASYNC_DIR!, id, "status.json"), "utf-8")) as { steps?: Array<{ acceptance?: { status?: string } }> };
 			assert.equal(status.steps?.[0]?.acceptance?.status, "checked");
+		});
+
+		it("file-only mode evaluates the resolved async file when no write tool event was captured", async () => {
+			const outputPath = path.join(tempDir, "async-resolved-report.md");
+			const fileReport = `# Findings\n${acceptanceReport("satisfied", "from resolved async authoritative file")}`;
+			mockPi.onCall({
+				jsonl: [events.assistantMessage("The report is saved; see the configured output path.")],
+				writeFiles: [{ path: outputPath, content: fileReport }],
+			});
+			const id = `acceptance-resolved-async-file-${Date.now().toString(36)}`;
+			runAsyncSingle(id, outputPath, "file-only");
+
+			const payload = await waitForAsyncResult(id);
+			assert.equal(payload.success, true);
+			assert.equal(payload.results[0]?.acceptance?.status, "checked");
+			assert.equal(payload.results[0]?.acceptance?.childReport?.criteriaSatisfied?.[0]?.evidence, "from resolved async authoritative file");
 		});
 
 		it("file-only mode persists async acceptance metadata when final assistant text is only a receipt", async () => {
