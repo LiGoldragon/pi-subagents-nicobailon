@@ -3,7 +3,7 @@
 ## [Unreleased]
 
 ### Added
-- Added versioned generated project-role metadata (`projectRoleIdentity`, `projectRoleDispatchKind`, and nested `allowedChildRoleNames`) with caller-aware, atomic dispatch authorization.
+- Added versioned generated project-role metadata (`projectRoleIdentity`, `projectRoleDispatchKind`, and nested `allowedChildRoleNames`) with caller-aware, atomic dispatch authorization and fail-closed `projectRolePolicy` deployment mode.
 
 ### Changed
 - Default the registered surface to direct generated-role launch; full/custom disclosure retains diagnostics, controls, chains, budgets, scheduling, administration, and wait.

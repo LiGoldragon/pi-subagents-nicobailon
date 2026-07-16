@@ -1021,6 +1021,13 @@ export interface ProactiveSkillSubagentsConfig {
 
 export type ToolDescriptionMode = "full" | "compact" | "custom";
 
+export interface ProjectRolePolicyConfig {
+	/** Managed generated deployments require a valid Manager/nested policy. */
+	required?: boolean;
+	/** Explicit compatibility escape hatch for a deliberately non-project workflow. */
+	allowLegacyNonProject?: boolean;
+}
+
 export interface ScheduledRunsConfig {
 	enabled?: boolean;
 	maxLatenessMs?: number;
@@ -1050,6 +1057,7 @@ export interface ExtensionConfig {
 	worktreeBaseDir?: string;
 	intercomBridge?: IntercomBridgeConfig;
 	proactiveSkillSubagents?: ProactiveSkillSubagentsConfig | false;
+	projectRolePolicy?: ProjectRolePolicyConfig;
 	scheduledRuns?: ScheduledRunsConfig;
 }
 

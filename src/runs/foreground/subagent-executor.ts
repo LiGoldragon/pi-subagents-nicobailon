@@ -261,6 +261,10 @@ function callerPolicyFor(deps: ExecutorDeps, cwd: string): CallerRolePolicy | un
 	return deps.callerRolePolicy ?? discoverRootManagerPolicy(deps.discoverAgents(cwd, "both").agents);
 }
 
+function projectRolePolicyConfigFor(deps: ExecutorDeps) {
+	return deps.config.projectRolePolicy;
+}
+
 function nestedResolutionScopeForExecutor(deps: ExecutorDeps): NestedRunResolutionScope | undefined {
 	if (deps.allowMutatingManagementActions !== false) return undefined;
 	const route = resolveInheritedNestedRouteFromEnv();
@@ -815,6 +819,7 @@ function appendStepToAsyncChain(input: {
 		agents,
 		targetNames: collectRequestedAgentNames({ chain: input.params.chain }),
 		hasPerCallModelOverride: hasPerCallModelOverride({ chain: input.params.chain }),
+		policyConfig: projectRolePolicyConfigFor(input.deps),
 	});
 	if (appendAuthorizationError) {
 		return { content: [{ type: "text", text: appendAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
@@ -1090,6 +1095,7 @@ async function resumeAsyncRun(input: {
 		agents: resumeAgents,
 		targetNames: [target.agent],
 		hasPerCallModelOverride: hasPerCallModelOverride(input.params),
+		policyConfig: projectRolePolicyConfigFor(input.deps),
 	});
 	if (resumeAuthorizationError) {
 		return { content: [{ type: "text", text: resumeAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
@@ -1163,6 +1169,19 @@ async function resumeAsyncRun(input: {
 	}
 
 	if (attachChain) {
+		// Validate root and every supplied append step together before the async
+		// runner receives any work. This keeps a rejected chain from partially
+		// launching its attached root or a permitted prefix.
+		const attachAuthorizationError = authorizeProjectRoleDispatch({
+			caller: callerPolicyFor(input.deps, effectiveCwd),
+			agents: discoveredAgents,
+			targetNames: [target.agent, ...collectRequestedAgentNames({ chain: attachChain })],
+			hasPerCallModelOverride: hasPerCallModelOverride({ chain: attachChain }),
+			policyConfig: projectRolePolicyConfigFor(input.deps),
+		});
+		if (attachAuthorizationError) {
+			return { content: [{ type: "text", text: attachAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
+		}
 		if (target.source !== "async") {
 			return {
 				content: [{ type: "text", text: "Attaching a running subagent as a chain root is currently available for async runs only." }],
@@ -3354,6 +3373,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 						agents: scheduledAgents,
 						targetNames: collectRequestedAgentNames(paramsWithResolvedCwd),
 						hasPerCallModelOverride: hasPerCallModelOverride(paramsWithResolvedCwd),
+						policyConfig: projectRolePolicyConfigFor(deps),
 					});
 					if (scheduleAuthorizationError) return { content: [{ type: "text", text: scheduleAuthorizationError }], isError: true, details: { mode: "management", results: [] } };
 				}
@@ -3507,6 +3527,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 			agents: discoveredAgents,
 			targetNames: collectRequestedAgentNames(effectiveParams),
 			hasPerCallModelOverride: hasPerCallModelOverride(effectiveParams) || effectiveParams.clarify === true,
+			policyConfig: projectRolePolicyConfigFor(deps),
 		});
 		if (authorizationError) return buildRequestedModeError(effectiveParams, authorizationError);
 		effectiveParams = applySingleAgentLaunchDefaults(effectiveParams, discoveredAgents);

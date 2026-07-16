@@ -283,6 +283,7 @@ describe("subagent extension child mode", () => {
 			import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "./src/runs/shared/pi-args.ts";
 			process.env[SUBAGENT_CHILD_ENV] = "1";
 			process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
+			process.env.PI_SUBAGENT_PROJECT_ROLE_METADATA = JSON.stringify({ version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: [] });
 
 			const registeredNames = new Set();
 			const registrations = [];
@@ -321,12 +322,52 @@ describe("subagent extension child mode", () => {
 		);
 	});
 
+	it("fails closed instead of registering fanout for missing or malformed generated metadata", () => {
+		const script = String.raw`
+			import registerFanoutChildSubagentExtension from "./src/extension/fanout-child.ts";
+			import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "./src/runs/shared/pi-args.ts";
+			process.env[SUBAGENT_CHILD_ENV] = "1";
+			process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
+			process.env.PI_SUBAGENT_PROJECT_ROLE_METADATA = "{old-packet";
+			let registered = false;
+			registerFanoutChildSubagentExtension({ registerTool() { registered = true; } });
+			if (registered) throw new Error("malformed generated packet must not receive fanout");
+		`;
+		execFileSync(process.execPath, ["--experimental-transform-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script], { cwd: projectRoot, stdio: "pipe" });
+	});
+
+	it("registers metadata-free fanout only with explicit legacy non-project configuration", () => {
+		const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-legacy-fanout-"));
+		try {
+			fs.mkdirSync(path.join(agentDir, "extensions", "subagent"), { recursive: true });
+			fs.writeFileSync(path.join(agentDir, "extensions", "subagent", "config.json"), JSON.stringify({ projectRolePolicy: { allowLegacyNonProject: true } }));
+			const script = String.raw`
+				import registerFanoutChildSubagentExtension from "./src/extension/fanout-child.ts";
+				import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "./src/runs/shared/pi-args.ts";
+				process.env[SUBAGENT_CHILD_ENV] = "1";
+				process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
+				delete process.env.PI_SUBAGENT_PROJECT_ROLE_METADATA;
+				let registered = false;
+				registerFanoutChildSubagentExtension({ registerTool() { registered = true; }, events: { on() { return () => {}; } } });
+				if (!registered) throw new Error("explicit legacy fanout configuration should register");
+			`;
+			execFileSync(process.execPath, ["--experimental-transform-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script], {
+				cwd: projectRoot,
+				env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+				stdio: "pipe",
+			});
+		} finally {
+			fs.rmSync(agentDir, { recursive: true, force: true });
+		}
+	});
+
 	it("lets fanout children call read-only list but blocks mutating management actions", () => {
 		const script = String.raw`
 			import registerFanoutChildSubagentExtension from "./src/extension/fanout-child.ts";
 			import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "./src/runs/shared/pi-args.ts";
 			process.env[SUBAGENT_CHILD_ENV] = "1";
 			process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
+			process.env.PI_SUBAGENT_PROJECT_ROLE_METADATA = JSON.stringify({ version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: [] });
 			let registeredTool;
 			const fakePi = {
 				events: { on() { return () => {}; }, emit() {} },

@@ -6,7 +6,7 @@ import { discoverAgents } from "../agents/agents.ts";
 import { getArtifactsDir } from "../shared/artifacts.ts";
 import { createSubagentExecutor, type SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
 import { SUBAGENT_CHILD_ENV, SUBAGENT_FANOUT_CHILD_ENV } from "../runs/shared/pi-args.ts";
-import { parseProjectRoleMetadataEnvironment } from "../agents/project-role-policy.ts";
+import { PROJECT_ROLE_METADATA_ENV, parseProjectRoleMetadataEnvironment } from "../agents/project-role-policy.ts";
 import { readNestedControlRequests, resolveNestedRouteFromEnv, writeNestedControlResult } from "../runs/shared/nested-events.ts";
 import { deliverSubagentIntercomMessageEvent } from "../intercom/result-intercom.ts";
 import { resolveSubagentIntercomTarget } from "../intercom/intercom-bridge.ts";
@@ -140,10 +140,14 @@ export default function registerFanoutChildSubagentExtension(pi: ExtensionAPI): 
 	if (registeredApis.has(pi)) return;
 	registeredApis.add(pi);
 
-	const callerMetadata = parseProjectRoleMetadataEnvironment();
-	if (callerMetadata && callerMetadata.projectRoleDispatchKind !== "nested") return;
-
 	const config = loadConfig();
+	const rawCallerMetadata = process.env[PROJECT_ROLE_METADATA_ENV];
+	const callerMetadata = parseProjectRoleMetadataEnvironment(rawCallerMetadata);
+	// A present-but-invalid packet is never a legacy session. A missing packet
+	// is legacy only when an operator explicitly enables that compatibility path.
+	if ((rawCallerMetadata?.trim() && !callerMetadata)
+		|| (callerMetadata && callerMetadata.projectRoleDispatchKind !== "nested")
+		|| (!callerMetadata && config.projectRolePolicy?.allowLegacyNonProject !== true)) return;
 	const state = createChildSafeState();
 	const executor = createSubagentExecutor({
 		pi,

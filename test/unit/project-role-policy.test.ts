@@ -71,6 +71,19 @@ describe("caller-aware generated project role authorization", () => {
 		assert.match(authorizeProjectRoleDispatch({ caller: policy(leaf), agents, targetNames: ["Reader"], hasPerCallModelOverride: false }) ?? "", /cannot dispatch/);
 	});
 
+	it("fails closed for a managed session without generated policy while retaining non-managed compatibility", () => {
+		assert.equal(authorizeProjectRoleDispatch({ caller: undefined, agents: [{ ...leaf, source: "user" }], targetNames: ["legacy"], hasPerCallModelOverride: false }), undefined);
+		assert.equal(authorizeProjectRoleDispatch({ caller: undefined, agents: [nested, leaf], targetNames: ["Reader"], hasPerCallModelOverride: false }), undefined);
+		assert.match(authorizeProjectRoleDispatch({ caller: undefined, agents: [], targetNames: ["legacy"], hasPerCallModelOverride: false, policyConfig: { required: true, allowLegacyNonProject: true } }) ?? "", /required/);
+	});
+
+	it("atomically accepts every allowed attach target and rejects any forbidden target", () => {
+		assert.equal(authorizeProjectRoleDispatch({ caller: policy(nested), agents, targetNames: ["Reader", "Reader"], hasPerCallModelOverride: false }), undefined);
+		assert.match(authorizeProjectRoleDispatch({ caller: policy(nested), agents, targetNames: ["Reader", "Planner"], hasPerCallModelOverride: false }) ?? "", /only leaf roles/);
+		assert.match(authorizeProjectRoleDispatch({ caller: policy(nested), agents, targetNames: ["Reader", "Builtin"], hasPerCallModelOverride: false }) ?? "", /not a generated project role/);
+		assert.match(authorizeProjectRoleDispatch({ caller: policy(nested), agents, targetNames: ["Reader"], hasPerCallModelOverride: true }) ?? "", /model overrides/);
+	});
+
 	it("rejects disabled, built-in, unknown, and per-call-model targets before launch", () => {
 		for (const target of ["Disabled", "Builtin", "Unknown"]) {
 			assert.ok(authorizeProjectRoleDispatch({ caller: policy(manager), agents, targetNames: [target], hasPerCallModelOverride: false }), target);

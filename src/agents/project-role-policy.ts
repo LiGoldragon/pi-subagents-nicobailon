@@ -1,4 +1,5 @@
 import type { AgentConfig } from "./agents.ts";
+import type { ProjectRolePolicyConfig } from "../shared/types.ts";
 
 /** Metadata emitted by the skills generator for a project-owned role. */
 export interface ProjectRoleMetadata {
@@ -95,11 +96,22 @@ function targetRole(agents: AgentConfig[], name: string): { agent?: AgentConfig;
 }
 
 /** Validates every requested child before execution allocates state or starts one. */
-export function authorizeProjectRoleDispatch(input: { caller: CallerRolePolicy | undefined; agents: AgentConfig[]; targetNames: string[]; hasPerCallModelOverride: boolean }): string | undefined {
-	// Preserve the extension's legacy behavior when no generated role roster is
-	// present. Once a generated Manager is discovered, all dispatch is governed
-	// by the generated roster rather than caller-provided parameters.
-	if (!input.caller) return undefined;
+export function authorizeProjectRoleDispatch(input: {
+	caller: CallerRolePolicy | undefined;
+	agents: AgentConfig[];
+	targetNames: string[];
+	hasPerCallModelOverride: boolean;
+	policyConfig?: ProjectRolePolicyConfig;
+}): string | undefined {
+	if (!input.caller) {
+		if (input.policyConfig?.required === true) {
+			return "Generated project-role policy is required, but this session has missing or malformed generated role metadata.";
+		}
+		// Only a managed deployment can identify project agents as generated.
+		// Ordinary project agent files retain upstream-compatible behavior until
+		// that deployment opts into required policy enforcement.
+		return undefined;
+	}
 	if (input.hasPerCallModelOverride) return "Generated project roles use their generated effective model; per-call model overrides are not allowed.";
 	for (const targetName of input.targetNames) {
 		const target = targetRole(input.agents, targetName);
