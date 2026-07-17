@@ -114,7 +114,7 @@ describe("steering lifecycle ledger", () => {
 		});
 	});
 
-	it("reconstructs the original agent contract without leaking changed current fields", () => {
+	it("keeps current authority when reviving a persisted conversation", () => {
 		const current = {
 			name: "worker",
 			description: "current",
@@ -154,15 +154,14 @@ describe("steering lifecycle ledger", () => {
 			maxSubagentDepth: 2,
 			share: false,
 		});
-		assert.equal(recovered.model, "original/model");
-		assert.deepEqual(recovered.tools, ["read"]);
-		assert.equal(recovered.systemPrompt, "original prompt");
-		assert.equal(recovered.inheritProjectContext, false);
-		assert.deepEqual(recovered.toolBudget, { hard: 7, block: ["read"] });
-		assert.equal(recovered.maxSubagentDepth, 2);
-		for (const field of ["fallbackModels", "extensions", "subagentOnlyExtensions", "mcpDirectTools", "skills", "skillPath", "filePath", "completionGuard", "memory", "output"] as const) {
-			assert.equal(recovered[field], undefined, `${field} leaked from current config`);
-		}
+		assert.equal(recovered.model, "current/model");
+		assert.deepEqual(recovered.tools, ["write"]);
+		assert.equal(recovered.systemPrompt, "current prompt");
+		assert.equal(recovered.inheritProjectContext, true);
+		assert.deepEqual(recovered.toolBudget, { hard: 99, block: "*" });
+		assert.equal(recovered.maxSubagentDepth, 9);
+		assert.deepEqual(recovered.extensions, ["current-extension"]);
+		assert.deepEqual(recovered.mcpDirectTools, ["current_mcp"]);
 	});
 
 	it("rejects recovery when any configured hard budget is exhausted", () => {

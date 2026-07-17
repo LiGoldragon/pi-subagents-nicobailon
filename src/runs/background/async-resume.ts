@@ -497,29 +497,11 @@ export function resolveAsyncResumeTarget(params: AsyncResumeParams, deps: AsyncR
 	};
 }
 
-export function applySteeringRecoveryAgentConfig(agentConfig: AgentConfig, descriptor: SteeringRecoveryDescriptor): AgentConfig {
-	return {
-		...agentConfig,
-		model: descriptor.model,
-		fallbackModels: descriptor.fallbackModels ? [...descriptor.fallbackModels] : undefined,
-		thinking: descriptor.thinking,
-		tools: descriptor.tools ? [...descriptor.tools] : undefined,
-		extensions: descriptor.extensions ? [...descriptor.extensions] : undefined,
-		subagentOnlyExtensions: descriptor.subagentOnlyExtensions ? [...descriptor.subagentOnlyExtensions] : undefined,
-		mcpDirectTools: descriptor.mcpDirectTools ? [...descriptor.mcpDirectTools] : undefined,
-		systemPrompt: descriptor.systemPrompt,
-		systemPromptMode: descriptor.systemPromptMode,
-		inheritProjectContext: descriptor.inheritProjectContext,
-		inheritSkills: descriptor.inheritSkills,
-		skills: descriptor.skills ? [...descriptor.skills] : undefined,
-		skillPath: descriptor.skillPath ? [...descriptor.skillPath] : undefined,
-		filePath: descriptor.agentFilePath,
-		completionGuard: descriptor.completionGuard,
-		memory: descriptor.memory ? { ...descriptor.memory } : undefined,
-		output: descriptor.outputPath,
-		toolBudget: descriptor.initialToolBudget,
-		maxSubagentDepth: descriptor.maxSubagentDepth,
-	};
+export function applySteeringRecoveryAgentConfig(agentConfig: AgentConfig, _descriptor: SteeringRecoveryDescriptor): AgentConfig {
+	// The descriptor records history, not continuing authority. Current discovery
+	// policy controls model, tools, extensions, MCP access, prompt, and inheritance
+	// so a revival cannot resurrect authority that an operator has since removed.
+	return { ...agentConfig };
 }
 
 export function buildRevivedAsyncTask(target: AsyncResumeTarget, message: string): string {

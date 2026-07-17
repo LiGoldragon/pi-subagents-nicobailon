@@ -35,11 +35,12 @@ describe("generated project role executor authorization", { skip: !available ? "
 		agents = [role("Manager", "manager"), role("Planner", "nested", ["Reader"]), role("Reader", "leaf")],
 		config: Record<string, unknown> = {},
 		stateOverrides: Record<string, unknown> = {},
+		asyncByDefault = false,
 	) {
 		return executorModule.createSubagentExecutor({
 			pi: { events: createEventBus(), getSessionName: () => undefined },
 			state: { baseCwd: "", currentSessionId: null, asyncJobs: new Map(), foregroundControls: new Map(), lastForegroundControlId: null, ...stateOverrides },
-			config, asyncByDefault: false, tempArtifactsDir: cwd,
+			config, asyncByDefault, tempArtifactsDir: cwd,
 			getSubagentSessionRoot: () => cwd, expandTilde: (value: string) => value,
 			discoverAgents: () => ({ agents }),
 			...(callerRolePolicy ? { callerRolePolicy } : {}),
@@ -49,10 +50,20 @@ describe("generated project role executor authorization", { skip: !available ? "
 	it("launches a visible role directly without an inventory call", async () => {
 		cwd = createTempDir();
 		mockPi.reset();
-		mockPi.onCall({ output: "done" });
 		const result = await executor().execute("direct", { agent: "Reader", task: "read" }, new AbortController().signal, undefined, makeMinimalCtx(cwd));
 		assert.equal(result.isError, undefined);
-		assert.equal(fs.readdirSync(mockPi.dir).some((name) => name.startsWith("call-")), true);
+		assert.ok(result.details?.asyncId, "generated root Manager dispatch defaults to async");
+	});
+
+	it("defaults omitted async and Manager async:false dispatches to background execution", async () => {
+		mockPi.reset();
+		const manager = role("Manager", "manager");
+		for (const params of [{ agent: "Reader", task: "read" }, { agent: "Reader", task: "read", async: false }, { agent: "Reader", task: "read", async: false, clarify: true }]) {
+			const result = await executor({ metadata: manager.projectRole!, source: "environment" }, undefined, {}, {}, true)
+				.execute("background", params, new AbortController().signal, undefined, makeMinimalCtx(cwd));
+			assert.equal(result.isError, undefined);
+			assert.ok(result.details?.asyncId, "Manager dispatch must start an async run");
+		}
 	});
 
 	it("rejects a nested-to-nested edge atomically before a child starts", async () => {

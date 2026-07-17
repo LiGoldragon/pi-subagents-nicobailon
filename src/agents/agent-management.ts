@@ -35,10 +35,11 @@ import { resolveTurnBudgetConfig } from "../runs/shared/turn-budget.ts";
 import { validateAcceptanceInput } from "../runs/shared/acceptance.ts";
 import type { AcceptanceInput, Details, ExtensionConfig, ToolBudgetConfig } from "../shared/types.ts";
 import { getProjectConfigDir } from "../shared/utils.ts";
+import { visibleProjectRoles, type CallerRolePolicy } from "./project-role-policy.ts";
 
 type ManagementAction = "list" | "get" | "models" | "create" | "update" | "delete" | "eject" | "disable" | "enable" | "reset";
 type ManagementScope = "user" | "project";
-type ManagementContext = Pick<ExtensionContext, "cwd" | "modelRegistry"> & { model?: ExtensionContext["model"]; config?: ExtensionConfig };
+type ManagementContext = Pick<ExtensionContext, "cwd" | "modelRegistry"> & { model?: ExtensionContext["model"]; config?: ExtensionConfig; callerRolePolicy?: CallerRolePolicy };
 
 interface ManagementParams {
 	action?: string;
@@ -642,15 +643,21 @@ export function handleList(params: ManagementParams, ctx: ManagementContext): Ag
 	const d = discoverAgentsAll(ctx.cwd);
 	const scopedAgents = mergeAgentsForScope(scope, d.user, d.project, d.builtin, d.package)
 		.sort((a, b) => a.name.localeCompare(b.name));
-	const agents = scopedAgents.filter((a) => !a.disabled);
-	const chains = d.chains.filter((c) => scope === "both" || c.source === "package" || c.source === scope).sort((a, b) => a.name.localeCompare(b.name));
-	const diagnostics = d.chainDiagnostics.filter((entry) => scope === "both" || entry.source === scope);
-	const proactiveSuggestions = buildProactiveSkillSubagentRecommendationLines({
-		agents,
-		chains,
-		config: ctx.config?.proactiveSkillSubagents,
-		discoverAvailableSkills: () => discoverAvailableSkills(ctx.cwd),
-	});
+	const agents = ctx.callerRolePolicy
+		? visibleProjectRoles(ctx.callerRolePolicy, scopedAgents).sort((a, b) => a.name.localeCompare(b.name))
+		: scopedAgents.filter((a) => !a.disabled);
+	const chains = ctx.callerRolePolicy
+		? []
+		: d.chains.filter((c) => scope === "both" || c.source === "package" || c.source === scope).sort((a, b) => a.name.localeCompare(b.name));
+	const diagnostics = ctx.callerRolePolicy ? [] : d.chainDiagnostics.filter((entry) => scope === "both" || entry.source === scope);
+	const proactiveSuggestions = ctx.callerRolePolicy
+		? []
+		: buildProactiveSkillSubagentRecommendationLines({
+			agents,
+			chains,
+			config: ctx.config?.proactiveSkillSubagents,
+			discoverAvailableSkills: () => discoverAvailableSkills(ctx.cwd),
+		});
 	const lines = [
 		"Executable agents:",
 		...(agents.length

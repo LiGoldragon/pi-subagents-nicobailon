@@ -1,12 +1,12 @@
 /**
  * Subagent Tool
  *
- * Full-featured subagent with sync and async modes.
- * - Sync (default): Streams output, renders markdown, tracks usage
- * - Async: Background execution, emits events when done
+ * Full-featured subagent with asynchronous execution by default.
+ * - Async (default): Background execution, emits events when done
+ * - Foreground: Explicit async:false for non-Manager callers that need it
  *
  * Modes: single (agent + task), parallel (tasks[]), chain (chain[] with {previous})
- * Toggle: async parameter (default: false, configurable via config.json)
+ * Toggle: async parameter (default: true, configurable via config.json)
  *
  * Config file: ~/.pi/agent/extensions/subagent/config.json
  *   { "asyncByDefault": true, "forceTopLevelAsync": true, "maxSubagentDepth": 1, "intercomBridge": { "mode": "always", "instructionFile": "./intercom-bridge.md" }, "worktreeSetupHook": "./scripts/setup-worktree.mjs" }
@@ -24,7 +24,7 @@ import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "..
 import { resolveCurrentSessionId } from "../shared/session-identity.ts";
 import { cleanupOldChainDirs } from "../shared/settings.ts";
 import { clearLegacyResultAnimationTimer, renderSubagentResult } from "../tui/render.ts";
-import { SubagentParams } from "./schemas.ts";
+import { buildSubagentParams, SubagentParams } from "./schemas.ts";
 import { validateChainInput } from "./chain-validation.ts";
 import { createSubagentExecutor, type SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
 import { createAsyncJobTracker } from "../runs/background/async-job-tracker.ts";
@@ -46,7 +46,7 @@ import { formatSteeringNotice, handleSubagentSteeringNotice, SUBAGENT_STEERING_M
 import { SUBAGENT_CHILD_ENV, SUBAGENT_PARENT_SESSION_ENV } from "../runs/shared/pi-args.ts";
 import { formatDuration, shortenPath } from "../shared/formatters.ts";
 import { loadConfig } from "./config.ts";
-import { buildSubagentToolDescription } from "./tool-description.ts";
+import { buildSubagentToolDescription, resolveToolDescriptionMode } from "./tool-description.ts";
 import {
 	type Details,
 	type SubagentState,
@@ -61,6 +61,7 @@ import {
 	SUBAGENT_STEERING_NOTICE_EVENT,
 	WIDGET_KEY,
 } from "../shared/types.ts";
+import { discoverRootManagerPolicy } from "../agents/project-role-policy.ts";
 import {
 	clearPendingForegroundControlNotices,
 	formatSubagentControlNotice,
@@ -231,8 +232,9 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	cleanupOldChainDirs();
 
 	const config = loadConfig();
+	const toolDescriptionMode = resolveToolDescriptionMode(config);
 	const waitToolConfig = resolveWaitToolConfig(config.waitTool);
-	const asyncByDefault = config.asyncByDefault === true;
+	const asyncByDefault = config.asyncByDefault !== false;
 	const tempArtifactsDir = getArtifactsDir(null);
 	cleanupAllArtifactDirs(DEFAULT_ARTIFACT_CONFIG.cleanupDays);
 
@@ -408,11 +410,12 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		}, 0);
 	}
 
+	const toolParams = buildSubagentParams(toolDescriptionMode);
 	const tool: ToolDefinition<typeof SubagentParams, Details> = {
 		name: "subagent",
 		label: "Subagent",
 		description: buildSubagentToolDescription(config),
-		parameters: SubagentParams,
+		parameters: toolParams as typeof SubagentParams,
 
 		prepareArguments(args) {
 			// Run friendly chain validation before pi-ai's raw TypeBox schema check
@@ -470,14 +473,18 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 
 	pi.registerTool(tool);
 
-	registerWaitTool(pi, state, waitToolConfig.enabled);
+	if (toolDescriptionMode !== "compact") {
+		registerWaitTool(pi, state, waitToolConfig.enabled);
+	}
 
 	pi.on("agent_end", async (_event, ctx) => {
 		if (ctx.hasUI) return;
 		await drainOutstandingWork({ state, events: pi.events });
 	});
 
-	registerSlashCommands(pi, state);
+	if (toolDescriptionMode !== "compact") {
+		registerSlashCommands(pi, state);
+	}
 
 	const eventUnsubscribeStoreKey = "__piSubagentEventUnsubscribes";
 	const controlNoticeSeenStoreKey = "__piSubagentVisibleControlNotices";
@@ -562,6 +569,19 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		restoreSlashFinalSnapshots(ctx.sessionManager.getEntries());
 		primeExistingResults();
 	};
+
+	pi.on("before_agent_start", (event, ctx) => {
+		const manager = discoverRootManagerPolicy(discoverAgents(ctx.cwd, "both").agents);
+		if (!manager) return;
+		const managerFile = path.join(ctx.cwd, ".pi", "agents", "manager.md");
+		try {
+			const roster = fs.readFileSync(managerFile, "utf-8").trim();
+			if (!roster) return;
+			return { systemPrompt: `${event.systemPrompt}\n\nGenerated Manager roster (${managerFile}):\n${roster}` };
+		} catch {
+			// Discovery remains authoritative; a missing optional roster file does not alter ordinary sessions.
+		}
+	});
 
 	pi.on("session_start", (_event, ctx) => {
 		resetSessionState(ctx);

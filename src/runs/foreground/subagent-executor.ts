@@ -1172,17 +1172,7 @@ async function resumeAsyncRun(input: {
 		? discoveredAgents.map((agent) => applyIntercomBridgeToAgent(agent, intercomBridge))
 		: discoveredAgents;
 	const recoveryDescriptor = "recoveryDescriptor" in target ? target.recoveryDescriptor : undefined;
-	const discoveredAgentConfig = agents.find((agent) => agent.name === target.agent);
-	const agentConfig: AgentConfig | undefined = discoveredAgentConfig ?? (recoveryDescriptor ? {
-		name: recoveryDescriptor.agent,
-		description: "Persisted async recovery contract",
-		systemPrompt: "",
-		systemPromptMode: recoveryDescriptor.systemPromptMode,
-		inheritProjectContext: recoveryDescriptor.inheritProjectContext,
-		inheritSkills: recoveryDescriptor.inheritSkills,
-		source: "project",
-		filePath: recoveryDescriptor.agentFilePath ?? path.join(recoveryDescriptor.cwd, ".pi-subagents-recovery-agent"),
-	} : undefined);
+	const agentConfig = agents.find((agent) => agent.name === target.agent);
 	if (!agentConfig) {
 		return {
 			content: [{ type: "text", text: `Unknown agent for resume: ${target.agent}` }],
@@ -1302,10 +1292,10 @@ async function resumeAsyncRun(input: {
 			sourceRunId: target.runId,
 			...(input.deps.state.currentSessionId ? { parentSessionId: input.deps.state.currentSessionId } : {}),
 		},
-		modelOverride: input.params.model ?? recoveryDescriptor?.model ?? target.model,
-		thinkingOverride: input.params.model ? undefined : recoveryDescriptor?.thinking ?? target.thinking,
+		modelOverride: input.params.model,
+		thinkingOverride: undefined,
 		outputBaseDir: resolveSingleRunOutputBaseDir(input.deps, artifactsDir, runId),
-		maxSubagentDepth: recoveryDescriptor?.maxSubagentDepth ?? resolveCurrentMaxSubagentDepth(input.deps.config.maxSubagentDepth),
+		maxSubagentDepth: recoveryAgentConfig.maxSubagentDepth ?? resolveCurrentMaxSubagentDepth(input.deps.config.maxSubagentDepth),
 		waitToolEnabled: input.deps.waitToolEnabled,
 		worktreeSetupHook: input.deps.config.worktreeSetupHook,
 		worktreeSetupHookTimeoutMs: input.deps.config.worktreeSetupHookTimeoutMs,
@@ -1316,7 +1306,7 @@ async function resumeAsyncRun(input: {
 		availableModels,
 		output: recoveryDescriptor?.outputPath,
 		outputMode: recoveryDescriptor?.outputMode,
-		...(recoveryDescriptor?.skills ? { skills: [...recoveryDescriptor.skills] } : {}),
+
 		...(recoveryDescriptor?.acceptance !== undefined && input.params.acceptance === undefined ? { acceptance: recoveryDescriptor.acceptance } : {}),
 		...(input.params.timeoutMs !== undefined ? { timeoutMs: input.params.timeoutMs } : {}),
 		...(input.absoluteDeadlineAt !== undefined ? { absoluteDeadlineAt: input.absoluteDeadlineAt } : {}),
@@ -1631,7 +1621,9 @@ function applySingleAgentLaunchDefaults(params: SubagentParamsLike, agents: Agen
 	if (!agent) return params;
 	return {
 		...params,
-		...(params.async === undefined && agent.defaultAsync !== undefined ? { async: agent.defaultAsync } : {}),
+		// Foreground execution is an explicit caller choice. A legacy per-agent
+		// async:false must not turn an omitted launch into foreground work.
+		...(params.async === undefined && agent.defaultAsync === true ? { async: true } : {}),
 		...(params.timeoutMs === undefined && params.maxRuntimeMs === undefined && agent.defaultTimeoutMs !== undefined
 			? { timeoutMs: agent.defaultTimeoutMs }
 			: {}),
@@ -3537,6 +3529,7 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 				...ctx,
 				cwd: requestCwd,
 				config: deps.config,
+				callerRolePolicy: callerPolicyFor(deps, requestCwd),
 			});
 		}
 
@@ -3578,9 +3571,14 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		const discovered = deps.discoverAgents(effectiveCwd, scope);
 		const discoveredAgents = discovered.agents;
 		const modelScope = discovered.modelScope;
-		const authorizationError = authorizeProjectRoleDispatch({ caller: callerPolicyFor(deps, effectiveCwd), agents: discoveredAgents, targetNames: collectRequestedAgentNames(effectiveParams), hasPerCallModelOverride: hasPerCallModelOverride(effectiveParams) || effectiveParams.clarify === true, policyConfig: projectRolePolicyConfigFor(deps) });
+		const callerRolePolicy = callerPolicyFor(deps, effectiveCwd);
+		const managerCaller = callerRolePolicy?.metadata.projectRoleDispatchKind === "manager";
+		const authorizationError = authorizeProjectRoleDispatch({ caller: callerRolePolicy, agents: discoveredAgents, targetNames: collectRequestedAgentNames(effectiveParams), hasPerCallModelOverride: hasPerCallModelOverride(effectiveParams) || (!managerCaller && effectiveParams.clarify === true), policyConfig: projectRolePolicyConfigFor(deps) });
 		if (authorizationError) return buildRequestedModeError(effectiveParams, authorizationError);
 		effectiveParams = applySingleAgentLaunchDefaults(effectiveParams, discoveredAgents);
+		if (managerCaller) {
+			effectiveParams = { ...effectiveParams, async: true, clarify: false };
+		}
 		const foregroundTimeout = resolveForegroundTimeout(effectiveParams);
 		if (foregroundTimeout.error) return buildRequestedModeError(effectiveParams, foregroundTimeout.error);
 		const turnBudget = resolveTurnBudgetConfig(effectiveParams.turnBudget ?? deps.config.turnBudget);

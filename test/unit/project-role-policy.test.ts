@@ -46,6 +46,17 @@ describe("generated project role metadata", () => {
 		assert.deepEqual(parseProjectRoleMetadataEnvironment(serializeProjectRoleMetadata(metadata!)), metadata);
 	});
 
+	it("accepts compatible scalar and YAML-sequence child roster forms", () => {
+		assert.deepEqual(
+			parseProjectRoleMetadata({ projectRoleIdentity: "nested", projectRoleDispatchKind: "nested", allowedChildRoleNames: "reader, writer" }, "nested")?.allowedChildRoleNames,
+			["reader", "writer"],
+		);
+		assert.deepEqual(
+			parseProjectRoleMetadata({ projectRoleIdentity: "nested", projectRoleDispatchKind: "nested", allowedChildRoleNames: "- reader\n- writer" }, "nested")?.allowedChildRoleNames,
+			["reader", "writer"],
+		);
+	});
+
 	it("rejects incomplete and mismatched nested-role metadata", () => {
 		assert.throws(() => parseProjectRoleMetadata({ projectRoleIdentity: "other", projectRoleDispatchKind: "leaf" }, "leaf"), /exactly equal/);
 		assert.throws(() => parseProjectRoleMetadata({ projectRoleIdentity: "nested", projectRoleDispatchKind: "nested" }, "nested"), /must declare allowedChildRoleNames/);
@@ -71,7 +82,8 @@ describe("caller-aware generated project role authorization", () => {
 		assert.match(authorizeProjectRoleDispatch({ caller: policy(leaf), agents, targetNames: ["Reader"], hasPerCallModelOverride: false }) ?? "", /cannot dispatch/);
 	});
 
-	it("fails closed for a managed session without generated policy while retaining non-managed compatibility", () => {
+	it("fails closed for malformed required configuration while retaining non-managed compatibility", () => {
+		assert.match(authorizeProjectRoleDispatch({ caller: policy(manager), agents, targetNames: ["Reader"], hasPerCallModelOverride: false, policyConfig: { required: true, configurationError: "invalid projectRolePolicy" } }) ?? "", /configuration is invalid/);
 		assert.equal(authorizeProjectRoleDispatch({ caller: undefined, agents: [{ ...leaf, source: "user" }], targetNames: ["legacy"], hasPerCallModelOverride: false }), undefined);
 		assert.equal(authorizeProjectRoleDispatch({ caller: undefined, agents: [nested, leaf], targetNames: ["Reader"], hasPerCallModelOverride: false }), undefined);
 		assert.match(authorizeProjectRoleDispatch({ caller: undefined, agents: [], targetNames: ["legacy"], hasPerCallModelOverride: false, policyConfig: { required: true, allowLegacyNonProject: true } }) ?? "", /required/);

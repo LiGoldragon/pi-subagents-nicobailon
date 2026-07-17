@@ -357,7 +357,7 @@ function buildCompactSubagentParams() {
 
 export function buildSubagentParams(mode: ToolDescriptionMode | undefined = "compact") {
 	return mode === "full" || mode === "custom"
-		? SubagentParamsSchema
+		? keepTopLevelParameterDescriptions(SubagentParamsSchema)
 		: buildCompactSubagentParams();
 }
 

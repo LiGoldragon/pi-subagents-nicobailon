@@ -18,7 +18,11 @@ export const PROJECT_ROLE_METADATA_ENV = "PI_SUBAGENT_PROJECT_ROLE_METADATA";
 
 function splitRoleNames(value: string | undefined): string[] {
 	if (!value?.trim()) return [];
-	return [...new Set(value.split(",").map((name) => name.trim()).filter(Boolean))];
+	const trimmed = value.trim();
+	const names = trimmed.split("\n").every((line) => /^\s*-\s+\S/.test(line))
+		? trimmed.split("\n").map((line) => line.replace(/^\s*-\s+/, "").trim())
+		: trimmed.split(",").map((name) => name.trim());
+	return [...new Set(names.filter(Boolean))];
 }
 
 /**
@@ -103,6 +107,9 @@ export function authorizeProjectRoleDispatch(input: {
 	hasPerCallModelOverride: boolean;
 	policyConfig?: ProjectRolePolicyConfig;
 }): string | undefined {
+	if (input.policyConfig?.configurationError) {
+		return `Generated project-role policy configuration is invalid: ${input.policyConfig.configurationError}`;
+	}
 	if (!input.caller) {
 		if (input.policyConfig?.required === true) {
 			return "Generated project-role policy is required, but this session has missing or malformed generated role metadata.";

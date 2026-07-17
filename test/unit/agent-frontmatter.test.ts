@@ -125,6 +125,23 @@ Plan work
 		assert.deepEqual(agent?.projectRole, { version: 1, projectRoleIdentity: "planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["reader", "writer"] });
 		assert.match(serializeAgent(agent!), /^projectRoleDispatchKind: nested$/m);
 		assert.match(serializeAgent(agent!), /^allowedChildRoleNames: reader, writer$/m);
+
+		writeAgent(filePath, `---
+name: planner
+description: Planner
+projectRoleIdentity: planner
+projectRoleDispatchKind: nested
+allowedChildRoleNames:
+  - reader
+  - writer
+---
+
+Plan work
+`);
+		assert.deepEqual(
+			discoverAgents(dir, "project").agents.find((candidate) => candidate.name === "planner")?.projectRole?.allowedChildRoleNames,
+			["reader", "writer"],
+		);
 	});
 });
 

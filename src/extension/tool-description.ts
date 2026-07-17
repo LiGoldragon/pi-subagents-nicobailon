@@ -10,7 +10,7 @@ export const SUBAGENT_SAFETY_GUIDANCE = `SAFETY-CRITICAL SUBAGENT GUIDANCE:
 • Dispatch a known generated project role directly. Runtime authorizes caller-to-role edges before a child starts; list is never required.
 • Generated Manager and nested roles do not receive proactive generic-role or skill suggestions. A nested role may dispatch only its declared leaf children; leaves cannot dispatch.
 • Generated roles use their generated effective model. Per-call model overrides cannot bypass it.
-• Launch async work only when it can proceed independently. Optional full disclosure contains diagnostics, controls, chains, budgets, and administration.`;
+• Omitted async launches run in the background. Launch only work that can proceed independently. A generated Manager is always background-only. Optional full disclosure contains diagnostics, controls, chains, budgets, and administration.`;
 
 export const FULL_SUBAGENT_TOOL_DESCRIPTION = `Delegate to subagents or manage agent definitions.
 
@@ -20,6 +20,7 @@ EXECUTION (use exactly ONE mode):
 • CHAIN: { chain: [{agent:"agent-a"}, {parallel:[{agent:"agent-b",count:3}]}] } - sequential pipeline with optional parallel fan-out
 • PARALLEL: { tasks: [{agent,task,count?,output?,reads?,progress?}, ...], concurrency?: number, worktree?: true } - concurrent execution (worktree: isolate each task in a git worktree)
 • Optional context: { context: "fresh" | "fork" } (explicit value overrides every child; when omitted, each requested agent uses its own defaultContext, otherwise "fresh")
+• Omit async to run in the background. async:false is available only to non-Manager callers for legitimate foreground work.
 • Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. timeoutMs and maxRuntimeMs are run-level aliases.
 
 CHAIN TEMPLATE VARIABLES (use in task strings):
@@ -67,8 +68,8 @@ ${SUBAGENT_SAFETY_GUIDANCE}`;
 
 export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate one focused task to a known generated project role.
 
-DIRECT LAUNCH: { agent: "known-role", task?: "...", async?: true, context?: "fresh" | "fork" }.
-Do not list first: generated packets own role names and descriptions, and runtime rejects unavailable or unauthorized targets before any child starts. async:true returns promptly for independent work.
+DIRECT LAUNCH: { agent: "known-role", task?: "...", async?: false, context?: "fresh" | "fork" }.
+Do not list first: generated packets own role names and descriptions, and runtime rejects unavailable or unauthorized targets before any child starts. Omitting async runs independently in the background; use async:false only for a legitimate non-Manager foreground run. If Manager roster recovery is needed, read .pi/agents/manager.md.
 
 ${SUBAGENT_SAFETY_GUIDANCE}
 

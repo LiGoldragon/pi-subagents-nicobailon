@@ -1152,6 +1152,8 @@ export interface ProjectRolePolicyConfig {
 	required?: boolean;
 	/** Explicit compatibility escape hatch for a deliberately non-project workflow. */
 	allowLegacyNonProject?: boolean;
+	/** Internal fail-closed marker for an unreadable or malformed extension configuration. */
+	configurationError?: string;
 }
 
 export interface ScheduledRunsConfig {
