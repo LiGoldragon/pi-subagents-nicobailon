@@ -4,7 +4,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, describe, it } from "node:test";
 import registerFanoutChildSubagentExtension from "../../src/extension/fanout-child.ts";
-import { PROJECT_ROLE_METADATA_ENV } from "../../src/agents/project-role-policy.ts";
 import { createSubagentExecutor } from "../../src/runs/foreground/subagent-executor.ts";
 import { createNestedRoute, projectNestedEvents, readNestedControlRequests, readNestedControlResults, writeNestedControlRequest, writeNestedControlResult, writeNestedEvent } from "../../src/runs/shared/nested-events.ts";
 import {
@@ -29,7 +28,6 @@ const savedEnv = {
 	[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV]: process.env[SUBAGENT_PARENT_CAPABILITY_TOKEN_ENV],
 	[SUBAGENT_PARENT_RUN_ID_ENV]: process.env[SUBAGENT_PARENT_RUN_ID_ENV],
 	[SUBAGENT_PARENT_CHILD_INDEX_ENV]: process.env[SUBAGENT_PARENT_CHILD_INDEX_ENV],
-	[PROJECT_ROLE_METADATA_ENV]: process.env[PROJECT_ROLE_METADATA_ENV],
 };
 
 afterEach(() => {
@@ -63,7 +61,7 @@ function createExecutor(state = createState(), agents: Array<Record<string, unkn
 	return createSubagentExecutor({
 		pi: { events, getSessionName() { return "parent"; } } as any,
 		state,
-		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {}, projectRolePolicy: { allowLegacyNonProject: true } } as any,
+		config: { maxSubagentDepth: 2, control: {}, intercomBridge: {} } as any,
 		asyncByDefault: false,
 		tempArtifactsDir: os.tmpdir(),
 		getSubagentSessionRoot: (parentSessionFile) => parentSessionFile ? path.join(path.dirname(parentSessionFile), path.basename(parentSessionFile, ".jsonl")) : os.tmpdir(),
@@ -374,7 +372,6 @@ describe("nested control routing", () => {
 		setNestedRouteEnv(route, "root-poll-error");
 		process.env[SUBAGENT_CHILD_ENV] = "1";
 		process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
-		process.env[PROJECT_ROLE_METADATA_ENV] = JSON.stringify({ version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: [] });
 		const pi = {
 			events: { emit() {}, on() { return () => {}; } },
 			registerTool() {},
@@ -413,7 +410,6 @@ describe("nested control routing", () => {
 		setNestedRouteEnv(route, "root-result-write-fails");
 		process.env[SUBAGENT_CHILD_ENV] = "1";
 		process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
-		process.env[PROJECT_ROLE_METADATA_ENV] = JSON.stringify({ version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: [] });
 		const pi = {
 			events: { emit() {}, on() { return () => {}; } },
 			registerTool() {},
@@ -452,7 +448,6 @@ describe("nested control routing", () => {
 		setNestedRouteEnv(route, "root-ownerless");
 		process.env[SUBAGENT_CHILD_ENV] = "1";
 		process.env[SUBAGENT_FANOUT_CHILD_ENV] = "1";
-		process.env[PROJECT_ROLE_METADATA_ENV] = JSON.stringify({ version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: [] });
 		const pi = {
 			events: { emit() {}, on() { return () => {}; } },
 			registerTool() {},

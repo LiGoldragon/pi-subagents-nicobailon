@@ -6,21 +6,20 @@ import { getAgentDir, getProjectConfigDir } from "../shared/utils.ts";
 const CUSTOM_TOOL_DESCRIPTION_FILE = "subagent-tool-description.md";
 const CUSTOM_TOOL_DESCRIPTION_MAX_BYTES = 50 * 1024;
 
-export const SUBAGENT_SAFETY_GUIDANCE = `SAFETY-CRITICAL SUBAGENT GUIDANCE:
-• Dispatch a known generated project role directly. Runtime authorizes caller-to-role edges before a child starts; list is never required.
-• Generated Manager and nested roles do not receive proactive generic-role or skill suggestions. A nested role may dispatch only its declared leaf children; leaves cannot dispatch.
-• Generated roles use their generated effective model. Per-call model overrides cannot bypass it.
-• Omitted async launches run in the background. Launch only work that can proceed independently. A generated Manager is always background-only. Optional full disclosure contains diagnostics, controls, chains, budgets, and administration.`;
+export const SUBAGENT_SAFETY_GUIDANCE = `SUBAGENT GUIDANCE:
+• Launch a discovered agent directly with { agent, task? }. Use list only as an optional backup when a name is unknown or a launch fails.
+• Omitted async launches run in the background. Launch only work that can proceed independently.
+• Per-call model and tool choices use the normal runtime validation. Optional full disclosure contains diagnostics, controls, chains, budgets, and administration.`;
 
 export const FULL_SUBAGENT_TOOL_DESCRIPTION = `Delegate to subagents or manage agent definitions.
 
 EXECUTION (use exactly ONE mode):
-• Dispatch known generated project roles directly; runtime rejects unknown, disabled, built-in, manager, and unauthorized targets before any child starts. List is diagnostic-only.
+• Launch a discovered agent directly. Runtime validates ordinary inputs and availability; list is optional.
 • SINGLE: { agent, task? } - one task; omit task for self-contained agents
 • CHAIN: { chain: [{agent:"agent-a"}, {parallel:[{agent:"agent-b",count:3}]}] } - sequential pipeline with optional parallel fan-out
 • PARALLEL: { tasks: [{agent,task,count?,output?,reads?,progress?}, ...], concurrency?: number, worktree?: true } - concurrent execution (worktree: isolate each task in a git worktree)
 • Optional context: { context: "fresh" | "fork" } (explicit value overrides every child; when omitted, each requested agent uses its own defaultContext, otherwise "fresh")
-• Omit async to run in the background. async:false is available only to non-Manager callers for legitimate foreground work.
+• Omit async to run in the background. async:false is available for legitimate foreground work.
 • Budget controls are opt-in: normally omit timeoutMs, maxRuntimeMs, turnBudget, and toolBudget. Set one only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. timeoutMs and maxRuntimeMs are run-level aliases.
 
 CHAIN TEMPLATE VARIABLES (use in task strings):
@@ -66,10 +65,10 @@ DIAGNOSTICS:
 
 ${SUBAGENT_SAFETY_GUIDANCE}`;
 
-export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate one focused task to a known generated project role.
+export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate one focused task directly.
 
-DIRECT LAUNCH: { agent: "known-role", task?: "...", async?: true, context?: "fresh" | "fork" }.
-Do not list first: generated packets own role names and descriptions, and runtime rejects unavailable or unauthorized targets before any child starts. Omitting async means true/background; use async:false only for a legitimate non-Manager foreground run. Only when the Manager roster is missing or stale, or a known-role launch fails, recover with { action: "list" }; its results are filtered to the caller's visible roles. When this session is the generated Manager, read .pi/agents/manager.md only for that recovery.
+DIRECT LAUNCH: { agent: "agent-name", task?: "...", async?: true, context?: "fresh" | "fork" }.
+Do not list first. If an agent name is unknown or a direct launch fails, use { action: "list" } as an optional backup; it shows normally discoverable available agents. Omitting async means true/background; use async:false only for legitimate foreground work. A generated Manager roster may guide role selection, but it does not authorize or restrict runtime operations.
 
 ${SUBAGENT_SAFETY_GUIDANCE}
 

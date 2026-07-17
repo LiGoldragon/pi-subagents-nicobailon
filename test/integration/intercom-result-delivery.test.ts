@@ -641,7 +641,7 @@ describe("intercom result delivery cutover", { skip: !available ? "executor not 
 				makeMinimalCtx(tempDir),
 			);
 			assert.equal(result.isError, true);
-			assert.match(result.content[0]?.text ?? "", /Unknown project role|Unknown agent|not a generated project role/);
+			assert.match(result.content[0]?.text ?? "", /Unknown agent/);
 		} finally {
 			fs.rmSync(asyncDir, { recursive: true, force: true });
 		}

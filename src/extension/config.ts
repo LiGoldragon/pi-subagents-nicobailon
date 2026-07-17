@@ -13,16 +13,7 @@ function readConfigForUpdate(configPath = getConfigPath()): ExtensionConfig {
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 		throw new Error(`Subagent config at '${configPath}' must be a JSON object`);
 	}
-	const config = parsed as ExtensionConfig;
-	if (config.projectRolePolicy !== undefined) {
-		const policy = config.projectRolePolicy;
-		if (!policy || typeof policy !== "object" || Array.isArray(policy)
-			|| (policy.required !== undefined && typeof policy.required !== "boolean")
-			|| (policy.allowLegacyNonProject !== undefined && typeof policy.allowLegacyNonProject !== "boolean")) {
-			throw new Error(`Subagent config at '${configPath}' has invalid projectRolePolicy; required and allowLegacyNonProject must be booleans.`);
-		}
-	}
-	return config;
+	return parsed as ExtensionConfig;
 }
 
 export function saveConfig(config: ExtensionConfig, configPath = getConfigPath()): void {
@@ -42,8 +33,7 @@ export function loadConfig(): ExtensionConfig {
 	try {
 		return readConfigForUpdate(configPath);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
 		console.error(`Failed to load subagent config from '${configPath}':`, error);
-		return { projectRolePolicy: { required: true, configurationError: message } };
+		return {};
 	}
 }

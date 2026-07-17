@@ -20,7 +20,6 @@ export { buildRuntimeName, frontmatterNameForConfig, parsePackageName } from "./
 import { parseMemoryFrontmatter } from "./agent-memory.ts";
 import { resolveTurnBudgetConfig } from "../runs/shared/turn-budget.ts";
 import { validateAcceptanceInput } from "../runs/shared/acceptance.ts";
-import { parseProjectRoleMetadata, type ProjectRoleMetadata } from "./project-role-policy.ts";
 
 export type AgentScope = "user" | "project" | "both";
 
@@ -143,8 +142,6 @@ export interface AgentConfig {
 	completionGuard?: boolean;
 	toolBudget?: ToolBudgetConfig;
 	memory?: AgentMemoryConfig;
-	/** Generated project-role dispatch contract, absent for ordinary agents. */
-	projectRole?: ProjectRoleMetadata;
 	disabled?: boolean;
 	extraFields?: Record<string, string>;
 	override?: BuiltinAgentOverrideInfo;
@@ -1349,7 +1346,6 @@ function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 				? true
 				: undefined;
 
-		const projectRole = parseProjectRoleMetadata(frontmatter, runtimeName);
 		const agent: AgentConfig = {
 			name: runtimeName,
 			localName,
@@ -1387,7 +1383,6 @@ function loadAgentsFromDir(dir: string, source: AgentSource): AgentConfig[] {
 			completionGuard,
 			toolBudget,
 			memory: parseMemoryFrontmatter(frontmatter.memory),
-			projectRole,
 			extraFields: Object.keys(extraFields).length > 0 ? extraFields : undefined,
 		};
 		agentFrontmatterFields.set(agent, new Set(Object.keys(frontmatter)));

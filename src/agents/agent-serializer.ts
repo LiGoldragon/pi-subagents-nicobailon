@@ -31,9 +31,6 @@ export const KNOWN_FIELDS = new Set([
 	"completionGuard",
 	"toolBudget",
 	"memory",
-	"projectRoleIdentity",
-	"projectRoleDispatchKind",
-	"allowedChildRoleNames",
 ]);
 
 function joinComma(values: string[] | undefined): string | undefined {
@@ -115,13 +112,6 @@ export function serializeAgent(config: AgentConfig, options: SerializeAgentOptio
 		lines.push(`toolBudget: ${config.toolBudget ? JSON.stringify(config.toolBudget) : ""}`);
 	}
 
-	if (config.projectRole) {
-		lines.push(`projectRoleIdentity: ${config.projectRole.projectRoleIdentity}`);
-		lines.push(`projectRoleDispatchKind: ${config.projectRole.projectRoleDispatchKind}`);
-		if (config.projectRole.projectRoleDispatchKind === "nested") {
-			lines.push(`allowedChildRoleNames: ${config.projectRole.allowedChildRoleNames.join(", ")}`);
-		}
-	}
 
 	if (config.memory) {
 		lines.push("memory:");

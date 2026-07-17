@@ -11,7 +11,6 @@ import { TOOL_BUDGET_ENV, encodeToolBudgetEnv } from "./tool-budget.ts";
 import { CHILD_TOOL_DIAGNOSTIC_PATH_ENV, REQUIRED_CHILD_TOOLS_ENV } from "./tool-availability.ts";
 import { CHILD_WATCHDOG_CONFIG_ENV, encodeChildWatchdogConfig, type ChildWatchdogConfig } from "../../watchdog/child-status.ts";
 import { WAIT_TOOL_ENABLED_ENV } from "../background/wait-config.ts";
-import { PROJECT_ROLE_METADATA_ENV, serializeProjectRoleMetadata, type ProjectRoleMetadata } from "../../agents/project-role-policy.ts";
 
 const TASK_ARG_LIMIT = 8000;
 const PROMPT_RUNTIME_EXTENSION_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), "subagent-prompt-runtime.ts");
@@ -81,8 +80,6 @@ interface BuildPiArgsInput {
 	toolBudget?: ResolvedToolBudget;
 	childWatchdog?: ChildWatchdogConfig;
 	waitToolEnabled?: boolean;
-	/** Frozen generated-role identity passed only to the spawned child process. */
-	projectRole?: ProjectRoleMetadata;
 }
 
 interface BuildPiArgsResult {
@@ -134,7 +131,7 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 	const declaredBuiltinTools = input.requireReadTool && input.tools?.length && !declaredBuiltinToolsBase.includes("read")
 		? ["read", ...declaredBuiltinToolsBase]
 		: declaredBuiltinToolsBase;
-	const fanoutAuthorized = declaredBuiltinTools.includes("subagent") && (input.projectRole === undefined || input.projectRole.projectRoleDispatchKind === "nested");
+	const fanoutAuthorized = declaredBuiltinTools.includes("subagent");
 	const toolExtensionPaths: string[] = [];
 	let requiredChildTools: string[] = [];
 	if (input.tools?.length) {
@@ -202,7 +199,6 @@ export function buildPiArgs(input: BuildPiArgsInput): BuildPiArgsResult {
 	}
 	env[SUBAGENT_CHILD_ENV] = "1";
 	env[SUBAGENT_FANOUT_CHILD_ENV] = fanoutAuthorized ? "1" : "0";
-	env[PROJECT_ROLE_METADATA_ENV] = input.projectRole ? serializeProjectRoleMetadata(input.projectRole) : "";
 	if (input.waitToolEnabled !== undefined) {
 		env[WAIT_TOOL_ENABLED_ENV] = input.waitToolEnabled ? "true" : "false";
 	}

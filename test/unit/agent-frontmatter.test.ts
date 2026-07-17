@@ -106,9 +106,9 @@ bash:
 	});
 });
 
-describe("generated project role frontmatter", () => {
-	it("parses and serializes machine-readable dispatch metadata", () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-project-role-frontmatter-"));
+describe("unrecognized generated metadata", () => {
+	it("preserves generated roster fields as inert frontmatter", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-generated-metadata-frontmatter-"));
 		tempDirs.push(dir);
 		const filePath = path.join(dir, ".pi", "agents", "planner.md");
 		writeAgent(filePath, `---
@@ -122,26 +122,11 @@ allowedChildRoleNames: reader, writer
 Plan work
 `);
 		const agent = discoverAgents(dir, "project").agents.find((candidate) => candidate.name === "planner");
-		assert.deepEqual(agent?.projectRole, { version: 1, projectRoleIdentity: "planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["reader", "writer"] });
+		assert.equal(agent?.extraFields?.projectRoleIdentity, "planner");
+		assert.equal(agent?.extraFields?.projectRoleDispatchKind, "nested");
+		assert.equal(agent?.extraFields?.allowedChildRoleNames, "reader, writer");
 		assert.match(serializeAgent(agent!), /^projectRoleDispatchKind: nested$/m);
 		assert.match(serializeAgent(agent!), /^allowedChildRoleNames: reader, writer$/m);
-
-		writeAgent(filePath, `---
-name: planner
-description: Planner
-projectRoleIdentity: planner
-projectRoleDispatchKind: nested
-allowedChildRoleNames:
-  - reader
-  - writer
----
-
-Plan work
-`);
-		assert.deepEqual(
-			discoverAgents(dir, "project").agents.find((candidate) => candidate.name === "planner")?.projectRole?.allowedChildRoleNames,
-			["reader", "writer"],
-		);
 	});
 });
 

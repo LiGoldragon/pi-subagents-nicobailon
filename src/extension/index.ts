@@ -3,7 +3,7 @@
  *
  * Full-featured subagent with asynchronous execution by default.
  * - Async (default): Background execution, emits events when done
- * - Foreground: Explicit async:false for non-Manager callers that need it
+ * - Foreground: Explicit async:false when needed
  *
  * Modes: single (agent + task), parallel (tasks[]), chain (chain[] with {previous})
  * Toggle: async parameter (default: true, configurable via config.json)
@@ -61,7 +61,6 @@ import {
 	SUBAGENT_STEERING_NOTICE_EVENT,
 	WIDGET_KEY,
 } from "../shared/types.ts";
-import { resolveCurrentRootProjectRolePolicy, type CallerRolePolicy } from "../agents/project-role-policy.ts";
 import {
 	clearPendingForegroundControlNotices,
 	formatSubagentControlNotice,
@@ -289,7 +288,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		widgetEnabled: config.asyncWidget !== false,
 	});
 	let executorExecute: ((id: string, params: SubagentParamsLike, signal: AbortSignal, onUpdate: ((r: AgentToolResult<Details>) => void) | undefined, ctx: ExtensionContext) => Promise<AgentToolResult<Details>>) | undefined;
-	let rootCallerRolePolicy: CallerRolePolicy | undefined;
 	const scheduledRunManager = createScheduledRunManager({
 		config,
 		launch: (params, ctx, signal) => {
@@ -315,7 +313,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		getSubagentSessionRoot,
 		expandTilde,
 		discoverAgents,
-		resolveCallerRolePolicy: () => rootCallerRolePolicy,
 	});
 	executorExecute = executor.execute;
 
@@ -548,7 +545,6 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	const resetSessionState = (ctx: ExtensionContext) => {
-		rootCallerRolePolicy = undefined;
 		state.baseCwd = ctx.cwd;
 		state.currentSessionId = resolveCurrentSessionId(ctx.sessionManager);
 		state.subagentSpawns = { sessionId: state.currentSessionId, count: 0 };
@@ -574,18 +570,14 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	pi.on("before_agent_start", (event, ctx) => {
-		rootCallerRolePolicy = resolveCurrentRootProjectRolePolicy(
-			discoverAgents(ctx.cwd, "both").agents,
-			event.systemPromptOptions.customPrompt,
-		);
-		if (rootCallerRolePolicy?.metadata.projectRoleDispatchKind !== "manager") return;
-		const managerFile = path.join(ctx.cwd, ".pi", "agents", "manager.md");
+		const manager = discoverAgents(ctx.cwd, "both").agents.find((agent) => agent.name.toLowerCase() === "manager");
+		if (!manager || manager.systemPrompt.trim() !== event.systemPromptOptions.customPrompt?.trim()) return;
 		try {
-			const roster = fs.readFileSync(managerFile, "utf-8").trim();
+			const roster = fs.readFileSync(manager.filePath, "utf-8").trim();
 			if (!roster) return;
-			return { systemPrompt: `${event.systemPrompt}\n\nGenerated Manager roster (${managerFile}):\n${roster}` };
+			return { systemPrompt: `${event.systemPrompt}\n\nGenerated Manager roster (${manager.filePath}):\n${roster}` };
 		} catch {
-			// Discovery remains authoritative; a missing optional roster file does not alter ordinary sessions.
+			// A missing optional roster leaves ordinary prompt startup unchanged.
 		}
 	});
 

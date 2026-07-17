@@ -8,7 +8,6 @@ import { TOOL_BUDGET_ENV } from "../../src/runs/shared/tool-budget.ts";
 import { WAIT_TOOL_ENABLED_ENV } from "../../src/runs/background/wait-config.ts";
 import { CHILD_TOOL_DIAGNOSTIC_PATH_ENV, REQUIRED_CHILD_TOOLS_ENV } from "../../src/runs/shared/tool-availability.ts";
 import { CHILD_WATCHDOG_CONFIG_ENV } from "../../src/watchdog/child-status.ts";
-import { PROJECT_ROLE_METADATA_ENV } from "../../src/agents/project-role-policy.ts";
 import {
 	SUBAGENT_FANOUT_CHILD_ENV,
 	SUBAGENT_PARENT_CHILD_INDEX_ENV,
@@ -250,21 +249,13 @@ describe("buildPiArgs session wiring", () => {
 	});
 });
 
-describe("buildPiArgs generated-role wiring", () => {
-	it("freezes nested role metadata and grants fanout only to nested roles", () => {
-		const nested = buildPiArgs({
+describe("buildPiArgs fanout wiring", () => {
+	it("enables fanout for any child whose ordinary tool allowlist includes subagent", () => {
+		const child = buildPiArgs({
 			baseArgs: ["-p"], task: "hello", sessionEnabled: false, inheritProjectContext: false, inheritSkills: false,
 			tools: ["subagent"],
-			projectRole: { version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["Reader"] },
 		});
-		assert.equal(nested.env[SUBAGENT_FANOUT_CHILD_ENV], "1");
-		assert.deepEqual(JSON.parse(nested.env[PROJECT_ROLE_METADATA_ENV] ?? "{}"), { version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["Reader"] });
-		const leaf = buildPiArgs({
-			baseArgs: ["-p"], task: "hello", sessionEnabled: false, inheritProjectContext: false, inheritSkills: false,
-			tools: ["subagent"],
-			projectRole: { version: 1, projectRoleIdentity: "Reader", projectRoleDispatchKind: "leaf", allowedChildRoleNames: [] },
-		});
-		assert.equal(leaf.env[SUBAGENT_FANOUT_CHILD_ENV], "0");
+		assert.equal(child.env[SUBAGENT_FANOUT_CHILD_ENV], "1");
 	});
 });
 

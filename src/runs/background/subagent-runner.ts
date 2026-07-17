@@ -1152,7 +1152,6 @@ async function runSingleStep(
 			toolBudget: step.toolBudget,
 			childWatchdog,
 			waitToolEnabled: step.waitToolEnabled,
-			projectRole: step.projectRole,
 		});
 		const run = await runPiStreaming(
 			args,

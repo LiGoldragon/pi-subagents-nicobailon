@@ -2,13 +2,17 @@
 
 ## [Unreleased]
 
+## [0.36.2]
+
+### Removed
+- Removed generated project-role runtime authorization, metadata propagation, role-filtered listing, and role-based recovery, scheduling, attachment, recursion, and model-override gates. Generated role packets remain prompt guidance only.
+
 ### Fixed
 - Updated real-session E2E coverage to assert the default-background receipt, await completion through the supported lifecycle tools, and inspect the completed transcript before checking the child outcome.
 - Removed the hidden default limit of 40 cumulative subagent launches per session. Sessions are unlimited unless a positive `maxSubagentSpawnsPerSession` or `PI_SUBAGENT_MAX_SPAWNS_PER_SESSION` cap is configured; `0` explicitly means unlimited. Thanks to @Maverobot, @KawaiiNahida, and @markng for the follow-up reports on #239.
 - Fork-context sanitization no longer disables thinking for every child. Forking over a transcript with signed Anthropic thinking blocks now classifies each child’s effective primary and fallback models through registry provider/API metadata, forces thinking off for Anthropic-backed or unresolved candidates, and reports every downgrade even when the run fails. Other resolved providers keep their requested thinking level. The tool description also documents thinking suffixes, including `max`, and the fork/thinking interaction. Thanks to Jeff (@jefftheai) for #476.
 
 ### Added
-- Added versioned generated project-role metadata and caller-aware, atomic dispatch authorization with fail-closed managed deployment policy.
 - Added a versioned `pi-subagents/background-work` provider contract so `subagent_wait` can track exact current-session jobs from other extensions without count races. Child runtimes can expose the wait tool through their strict allowlist, effective wait config is propagated to every child launch path, and headless sessions drain active work before ending. Thanks to RoboBryce (@robobryce) for #472 and #473.
 - Added a typed v1 foreground delegation contract for extension consumers through the existing `prompt-template:subagent:*` transport, with strict bounded controls, structured terminal states, cancellation, and a supported `pi-subagents/delegation` package export. Thanks to JT (@juicetin) for #465 and #467.
 - Added `acceptanceRole: read-only | writer` to agent frontmatter, settings overrides, and agent management so custom agent names can declare automatic acceptance semantics. Explicit task mutation or no-edit intent wins, while omitted metadata preserves the existing name heuristics. Thanks to Taylor C Jensen (@taylorcjensen) for #466.
