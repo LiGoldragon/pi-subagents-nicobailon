@@ -3,10 +3,11 @@
  *
  * Spawns an actual child `pi` subprocess (a repo-local child CLI that runs a
  * real `AgentSession` backed by a faux provider) and exercises the extension's
- * real foreground execution path: the parent session calls the `subagent` tool,
- * the tool spawns the child, the child streams jsonl events, the extension's
- * real stdout parser extracts the result, and the marker flows back as a tool
- * result that the parent relays. No real API keys are used.
+ * real background lifecycle: the parent session calls the `subagent` tool without
+ * `async`, receives its detached receipt, then observes the supported
+ * `subagent:async-complete` lifecycle event. The child streams jsonl events
+ * and the extension's real stdout parser extracts the result. No real API keys
+ * are used.
  *
  * Skips gracefully when the pi runtime packages are not importable.
  */
@@ -48,8 +49,9 @@ describe("real Pi-session subagent E2E", { skip: !available ? "pi runtime packag
 		run = undefined;
 	});
 
-	it("loads requested extension tools in direct and chain children and diagnoses missing providers", async () => {
+	it("observes default-background direct child completion while checking child tools and missing providers", async () => {
 		const { runRealSubagentSession, subagentCall, subagentToolResults } = await import("../support/real-session-runner.ts");
+		let directRunId: string | undefined;
 		const extensionAgent = `---
 name: extension-worker
 description: Uses a child-only fixture tool
@@ -79,20 +81,28 @@ Use the available tools.`;
 			prompt: "Run the direct, chain, and missing-provider child checks.",
 			childText: CHILD_MARKER,
 			reportChildTools: true,
+			captureAsyncCompletion: true,
+			extensionConfig: { toolDescriptionMode: "full" },
 			projectFiles: {
 				".pi/agents/extension-worker.md": extensionAgent,
 				".pi/agents/missing-extension-worker.md": missingAgent,
 				"fixture-extension.ts": fixtureExtension,
 			},
 			respond(context) {
-				const resultCount = (context.messages as Array<{ role?: string; toolName?: string }>).filter((message) => message.role === "toolResult" && message.toolName === "subagent").length;
-				if (resultCount === 0) {
+				const messages = context.messages as Array<{ role?: string; toolName?: string; content?: Array<{ type?: string; text?: string }> }>;
+				const subagentResults = messages.filter((message) => message.role === "toolResult" && message.toolName === "subagent");
+				if (subagentResults.length === 0) {
 					return subagentCall({ agent: "extension-worker", task: "Report active tools.", context: "fresh", agentScope: "project" }, "call-direct-extension");
 				}
-				if (resultCount === 1) {
+				if (!directRunId) {
+					const receipt = subagentResults[0]?.content?.map((part) => part.text ?? "").join("") ?? "";
+					directRunId = receipt.match(/Async: extension-worker \[([^\]]+)\]/)?.[1];
+					assert.ok(directRunId, `expected async receipt with run id, got: ${receipt}`);
+				}
+				if (subagentResults.length === 1) {
 					return subagentCall({ chain: [{ agent: "extension-worker", task: "Report active tools." }], async: false, clarify: false, agentScope: "project" }, "call-chain-extension");
 				}
-				if (resultCount === 2) {
+				if (subagentResults.length === 2) {
 					return subagentCall({
 						chain: [{
 							agent: "extension-worker",
@@ -109,8 +119,8 @@ Use the available tools.`;
 						agentScope: "project",
 					}, "call-structured-output");
 				}
-				if (resultCount === 3) {
-					return subagentCall({ agent: "missing-extension-worker", task: "Report active tools.", context: "fresh", agentScope: "project" }, "call-missing-extension");
+				if (subagentResults.length === 3) {
+					return subagentCall({ agent: "missing-extension-worker", task: "Report active tools.", context: "fresh", async: false, agentScope: "project" }, "call-missing-extension");
 				}
 				return "Child tool checks complete.";
 			},
@@ -121,9 +131,13 @@ Use the available tools.`;
 		const toolMessages = run.parentSession.messages.filter((message) => message.role === "toolResult" && (message as { toolName?: string }).toolName === "subagent");
 		const chainDetails = JSON.stringify((toolMessages[1] as { details?: unknown } | undefined)?.details);
 		const structuredDetails = JSON.stringify((toolMessages[2] as { details?: unknown } | undefined)?.details);
+		const directCompletion = run.asyncCompletions.find((completion) => (completion as { runId?: unknown }).runId === directRunId) as { success?: unknown; results?: Array<{ output?: unknown }> } | undefined;
 		assert.equal(results.length, 4);
-		assert.match(results[0] ?? "", /ACTIVE_TOOLS:[^\n]*fixture_search/);
-		assert.match(results[0] ?? "", /ACTIVE_TOOLS:[^\n]*read/);
+		assert.match(results[0] ?? "", /Async: extension-worker \[[^\]]+\]/);
+		assert.ok(directCompletion, "expected the supported async-complete lifecycle event for the default-background child");
+		assert.equal(directCompletion.success, true);
+		assert.match(String(directCompletion.results?.[0]?.output ?? ""), /ACTIVE_TOOLS:[^\n]*fixture_search/);
+		assert.match(String(directCompletion.results?.[0]?.output ?? ""), /ACTIVE_TOOLS:[^\n]*read/);
 		assert.match(chainDetails, /ACTIVE_TOOLS:[^\n]*fixture_search/);
 		assert.match(chainDetails, /ACTIVE_TOOLS:[^\n]*read/);
 		assert.match(structuredDetails, /STRUCTURED_OUTPUT_OK/);
@@ -131,8 +145,9 @@ Use the available tools.`;
 		assert.match(results[3] ?? "", /subagentOnlyExtensions/);
 	});
 
-	it("boots the extension in a real parent session and delivers a faux child result", async () => {
-		const { routeParentThroughSubagent, runRealSubagentSession, subagentToolResults } = await import("../support/real-session-runner.ts");
+	it("boots the extension with default-background dispatch and relays the completed faux child result", async () => {
+		const { runRealSubagentSession, subagentCall, subagentToolResults } = await import("../support/real-session-runner.ts");
+		let childRunId: string | undefined;
 
 		const previousEnv = new Map(ISOLATED_ENV_KEYS.map((key) => [key, process.env[key]]));
 		process.env.PI_SUBAGENT_CHILD = "1";
@@ -148,23 +163,34 @@ Use the available tools.`;
 			run = await runRealSubagentSession({
 				prompt: "Delegate to a worker and report its exact result.",
 				childText: CHILD_MARKER,
-				respond: routeParentThroughSubagent({
-					childMarker: CHILD_MARKER,
-					subagentArgs: {
-						agent: "worker",
-						task: "Return the marker from the faux child provider.",
-						context: "fresh",
-						agentScope: "project",
-					},
-				}),
+				captureAsyncCompletion: true,
+				extensionConfig: { toolDescriptionMode: "full" },
+				respond(context) {
+					const messages = context.messages as Array<{ role?: string; toolName?: string; content?: Array<{ type?: string; text?: string }> }>;
+					const subagentResults = messages.filter((message) => message.role === "toolResult" && message.toolName === "subagent");
+					if (subagentResults.length === 0) {
+						return subagentCall({ agent: "worker", task: "Return the marker from the faux child provider.", context: "fresh", agentScope: "project" }, "call-default-background-worker");
+					}
+					if (!childRunId) {
+						const receipt = subagentResults[0]?.content?.map((part) => part.text ?? "").join("") ?? "";
+						childRunId = receipt.match(/Async: worker \[([^\]]+)\]/)?.[1];
+						assert.ok(childRunId, `expected async receipt with run id, got: ${receipt}`);
+					}
+					return "Default-background receipt acknowledged; completion arrives through the lifecycle event.";
+				},
 			});
 
 			const toolResults = subagentToolResults(run.parentSession);
+			assert.ok(childRunId, "expected an async run id from the receipt");
+			await run.waitForAsyncCompletion(childRunId);
+			const childCompletion = run.asyncCompletions.find((completion) => (completion as { runId?: unknown }).runId === childRunId) as { success?: unknown; results?: Array<{ output?: unknown }> } | undefined;
 			assert.equal(toolResults.length, 1);
-			assert.match(toolResults[0]!, new RegExp(CHILD_MARKER));
-			assert.match(run.responseText, new RegExp(CHILD_MARKER));
-			assert.doesNotMatch(run.responseText, /CHILD_MISSING/);
-			assert.ok(run.modelCalls >= 2, `expected parent tool-call and final turns, got ${run.modelCalls}`);
+			assert.match(toolResults[0]!, /Async: worker \[[^\]]+\]/);
+			assert.ok(childCompletion, "expected the supported async-complete lifecycle event for the default-background child");
+			assert.equal(childCompletion.success, true);
+			assert.match(String(childCompletion.results?.[0]?.output ?? ""), new RegExp(CHILD_MARKER));
+			assert.match(run.responseText, /Default-background receipt acknowledged/);
+			assert.ok(run.modelCalls >= 2, `expected receipt and final parent turns, got ${run.modelCalls}`);
 		} finally {
 			await run?.dispose();
 			run = undefined;
