@@ -19,6 +19,40 @@ function parentToolEnv(): NodeJS.ProcessEnv {
 }
 
 describe("subagent extension child mode", () => {
+	it("injects the roster only when the selected root is the generated Manager", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-root-roster-"));
+		try {
+			const agentsDir = path.join(root, ".pi", "agents");
+			fs.mkdirSync(agentsDir, { recursive: true });
+			for (const [name, kind, children] of [["Manager", "manager", ""], ["Planner", "nested", "Reader"], ["Reader", "leaf", ""]] as const) {
+				fs.writeFileSync(path.join(agentsDir, `${name.toLowerCase()}.md`), `---\nname: ${name}\ndescription: ${name}\nprojectRoleIdentity: ${name}\nprojectRoleDispatchKind: ${kind}${kind === "nested" ? `\nallowedChildRoleNames: ${children}` : ""}\n---\n\n${name} root prompt\n`);
+			}
+			const script = String.raw`
+				import registerSubagentExtension from "./index.ts";
+				const handlers = new Map();
+				const pi = new Proxy({
+					events: { on() { return () => {}; }, emit() {} },
+					on(name, handler) { handlers.set(name, handler); },
+					registerTool() {}, registerCommand() {}, registerShortcut() {}, registerMessageRenderer() {}, sendMessage() {}, getSessionName() { return undefined; },
+				}, { get(target, prop) { return prop in target ? target[prop] : () => undefined; } });
+				registerSubagentExtension(pi);
+				const result = handlers.get("before_agent_start")({ systemPrompt: "base", systemPromptOptions: { cwd: process.env.ROOT_CWD, customPrompt: process.env.ROOT_PROMPT } }, { cwd: process.env.ROOT_CWD });
+				process.stdout.write(result?.systemPrompt ?? "");
+			`;
+			const run = (prompt: string): string => {
+				const env = parentToolEnv();
+				env.ROOT_CWD = root;
+				env.ROOT_PROMPT = prompt;
+				return execFileSync(process.execPath, ["--experimental-transform-types", "--import", "./test/support/register-loader.mjs", "--input-type=module", "--eval", script], { cwd: projectRoot, env, encoding: "utf-8" });
+			};
+			assert.match(run("Manager root prompt"), /Generated Manager roster/);
+			for (const prompt of ["Planner root prompt", "Reader root prompt"]) {
+				assert.doesNotMatch(run(prompt), /Generated Manager roster/);
+			}
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
 	it("collapses tool detail before direct subagent tool execution", () => {
 		const script = String.raw`
 			import registerSubagentExtension from "./index.ts";

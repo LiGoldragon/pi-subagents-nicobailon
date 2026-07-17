@@ -61,7 +61,7 @@ import {
 	SUBAGENT_STEERING_NOTICE_EVENT,
 	WIDGET_KEY,
 } from "../shared/types.ts";
-import { discoverRootManagerPolicy } from "../agents/project-role-policy.ts";
+import { resolveCurrentRootProjectRolePolicy, type CallerRolePolicy } from "../agents/project-role-policy.ts";
 import {
 	clearPendingForegroundControlNotices,
 	formatSubagentControlNotice,
@@ -289,6 +289,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		widgetEnabled: config.asyncWidget !== false,
 	});
 	let executorExecute: ((id: string, params: SubagentParamsLike, signal: AbortSignal, onUpdate: ((r: AgentToolResult<Details>) => void) | undefined, ctx: ExtensionContext) => Promise<AgentToolResult<Details>>) | undefined;
+	let rootCallerRolePolicy: CallerRolePolicy | undefined;
 	const scheduledRunManager = createScheduledRunManager({
 		config,
 		launch: (params, ctx, signal) => {
@@ -314,6 +315,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		getSubagentSessionRoot,
 		expandTilde,
 		discoverAgents,
+		resolveCallerRolePolicy: () => rootCallerRolePolicy,
 	});
 	executorExecute = executor.execute;
 
@@ -546,6 +548,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	const resetSessionState = (ctx: ExtensionContext) => {
+		rootCallerRolePolicy = undefined;
 		state.baseCwd = ctx.cwd;
 		state.currentSessionId = resolveCurrentSessionId(ctx.sessionManager);
 		state.subagentSpawns = { sessionId: state.currentSessionId, count: 0 };
@@ -571,8 +574,11 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	};
 
 	pi.on("before_agent_start", (event, ctx) => {
-		const manager = discoverRootManagerPolicy(discoverAgents(ctx.cwd, "both").agents);
-		if (!manager) return;
+		rootCallerRolePolicy = resolveCurrentRootProjectRolePolicy(
+			discoverAgents(ctx.cwd, "both").agents,
+			event.systemPromptOptions.customPrompt,
+		);
+		if (rootCallerRolePolicy?.metadata.projectRoleDispatchKind !== "manager") return;
 		const managerFile = path.join(ctx.cwd, ".pi", "agents", "manager.md");
 		try {
 			const roster = fs.readFileSync(managerFile, "utf-8").trim();

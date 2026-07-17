@@ -18,6 +18,10 @@ describe("preference-adapted tool disclosure", () => {
 		assert.match(description, /Do not list first/);
 		assert.match(description, /generated packets own role names/i);
 		assert.match(description, /generated effective model/i);
+		assert.match(description, /action: "list"/);
+		assert.match(description, /missing or stale.*known-role launch fails/i);
+		assert.match(description, /Omitting async means true\/background/);
+		assert.doesNotMatch(description, /async\?: false/);
 		assert.doesNotMatch(description, /CHAIN:/);
 		assert.doesNotMatch(description, /schedule-list/);
 		assert.doesNotMatch(description, /action: "status"/);

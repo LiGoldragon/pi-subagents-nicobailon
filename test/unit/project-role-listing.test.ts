@@ -31,4 +31,24 @@ describe("generated project role inventory", () => {
 			fs.rmSync(cwd, { recursive: true, force: true });
 		}
 	});
+
+	it("filters nested recovery inventory to declared leaf roles without exposing Manager", () => {
+		const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "pi-subagents-role-list-nested-"));
+		try {
+			const agents = path.join(cwd, ".pi", "agents");
+			fs.mkdirSync(agents, { recursive: true });
+			for (const [name, kind, children] of [["Manager", "manager", ""], ["Planner", "nested", "Reader"], ["Reader", "leaf", ""], ["Writer", "leaf", ""]] as const) {
+				fs.writeFileSync(path.join(agents, `${name}.md`), `---\nname: ${name}\ndescription: ${name}\nprojectRoleIdentity: ${name}\nprojectRoleDispatchKind: ${kind}${kind === "nested" ? `\nallowedChildRoleNames: ${children}` : ""}\n---\n\n${name}\n`);
+			}
+			const result = handleList({}, {
+				cwd,
+				modelRegistry: { getAvailable: () => [] },
+				callerRolePolicy: { source: "environment", metadata: { version: 1, projectRoleIdentity: "Planner", projectRoleDispatchKind: "nested", allowedChildRoleNames: ["Reader"] } },
+			});
+			assert.match(text(result), /- Reader \(project\): Reader/);
+			assert.doesNotMatch(text(result), /Manager \(project\)|Writer \(project\)/);
+		} finally {
+			fs.rmSync(cwd, { recursive: true, force: true });
+		}
+	});
 });

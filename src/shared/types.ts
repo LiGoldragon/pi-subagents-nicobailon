@@ -1166,7 +1166,7 @@ export interface ExtensionConfig {
 	asyncByDefault?: boolean;
 	/** Show the above-editor async runs widget. Defaults to true. */
 	asyncWidget?: boolean;
-	/** Tool description variant registered for the parent-facing subagent tool. Defaults to full. */
+	/** Tool description variant registered for the parent-facing subagent tool. Defaults to compact. */
 	toolDescriptionMode?: ToolDescriptionMode;
 	forceTopLevelAsync?: boolean;
 	waitTool?: WaitToolConfig;

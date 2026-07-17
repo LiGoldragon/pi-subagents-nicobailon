@@ -91,6 +91,28 @@ export function discoverRootManagerPolicy(agents: AgentConfig[]): CallerRolePoli
 	return { metadata: managers[0]!.projectRole!, source: "discovery" };
 }
 
+/**
+ * Pi exposes the selected root agent prompt at startup, but not its source
+ * path. Match that resolved prompt to exactly one generated role so the
+ * presence of a Manager file never grants Manager authority to another root.
+ */
+export function resolveCurrentRootProjectRolePolicy(agents: AgentConfig[], resolvedRootPrompt: string | undefined): CallerRolePolicy | undefined {
+	if (resolvedRootPrompt?.trim() === undefined) return undefined;
+	const matches = agents.filter((agent) =>
+		agent.source === "project"
+		&& !agent.disabled
+		&& agent.projectRole !== undefined
+		&& agent.systemPrompt.trim() === resolvedRootPrompt.trim(),
+	);
+	if (matches.length !== 1) return undefined;
+	return { metadata: matches[0]!.projectRole!, source: "discovery" };
+}
+
+export function resolveCurrentRootManagerPolicy(agents: AgentConfig[], resolvedRootPrompt: string | undefined): CallerRolePolicy | undefined {
+	const caller = resolveCurrentRootProjectRolePolicy(agents, resolvedRootPrompt);
+	return caller?.metadata.projectRoleDispatchKind === "manager" ? caller : undefined;
+}
+
 function targetRole(agents: AgentConfig[], name: string): { agent?: AgentConfig; error?: string } {
 	const agent = agents.find((candidate) => candidate.name === name);
 	if (!agent) return { error: `Unknown project role: ${name}` };

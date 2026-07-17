@@ -314,7 +314,7 @@ const SubagentParamsSchema = Type.Object({
 		description: "'fresh' or 'fork' to branch from parent session. Explicit context overrides every child in the invocation. If omitted, each requested agent uses its own defaultContext; agents without defaultContext: 'fork' run fresh.",
 	})),
 	chainDir: Type.Optional(Type.String({ description: "Persistent chain artifact directory; defaults to user-scoped temp storage." })),
-	async: Type.Optional(Type.Boolean({ description: "Run in background (default: false, or per config)" })),
+	async: Type.Optional(Type.Boolean({ description: "Run in background. Omit for true/background by default; set false only for an authorized non-Manager foreground run." })),
 	notify: Type.Optional(Type.String({ enum: ["owner", "child"], description: "Completion notification visibility. Nested runs default to owner (their accountable parent); set child only when the caller explicitly wants this nested completion surfaced." })),
 	timeoutMs: Type.Optional(Type.Integer({ minimum: 1, description: "Opt-in run deadline in ms for foreground and async/background runs. Omit in normal dispatch; set only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns. Alias of maxRuntimeMs." })),
 	maxRuntimeMs: Type.Optional(Type.Integer({ minimum: 1, description: "Alias of timeoutMs for an opt-in run deadline. Omit in normal dispatch; use only for an explicit user request or concrete external constraint, never speculative cost/runaway concerns." })),
@@ -329,7 +329,7 @@ const SubagentParamsSchema = Type.Object({
 		Type.String({ description: "Directory to store session logs (default: temp; enables sessions even if share=false)" }),
 	),
 	// Clarification TUI
-	clarify: Type.Optional(Type.Boolean({ description: "Show TUI to preview/edit before execution. Explicit clarify: true keeps the run foreground for the clarify UI; omitted clarify can still run in the background when async: true is set." })),
+	clarify: Type.Optional(Type.Boolean({ description: "Show TUI to preview/edit before execution. For non-Manager callers, clarify: true keeps the run foreground; generated Manager dispatch remains background-only." })),
 	control: Type.Optional(ControlOverrides),
 	// Solo agent overrides
 	output: Type.Optional(Type.Unsafe({
@@ -345,13 +345,19 @@ const SubagentParamsSchema = Type.Object({
 	acceptance: Type.Optional(AcceptanceOverride),
 });
 
-const MINIMAL_LAUNCH_PARAMETERS = new Set(["agent", "task", "async", "context"]);
+const MINIMAL_LAUNCH_PARAMETERS = new Set(["action", "agent", "task", "async", "context"]);
+
+const CompactRecoveryListAction = Type.Optional(Type.String({
+	enum: ["list"],
+	description: "Optional recovery inventory. Dispatch known roles directly; use action: 'list' only when the generated roster is missing, stale, or a known-role launch fails. Results are filtered to caller visibility.",
+}));
 
 function buildCompactSubagentParams() {
 	const compact = keepTopLevelParameterDescriptions(SubagentParamsSchema) as { properties?: Record<string, unknown> };
 	for (const parameter of Object.keys(compact.properties ?? {})) {
 		if (!MINIMAL_LAUNCH_PARAMETERS.has(parameter)) delete compact.properties?.[parameter];
 	}
+	if (compact.properties) compact.properties.action = CompactRecoveryListAction;
 	return compact;
 }
 

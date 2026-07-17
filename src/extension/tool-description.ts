@@ -68,8 +68,8 @@ ${SUBAGENT_SAFETY_GUIDANCE}`;
 
 export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate one focused task to a known generated project role.
 
-DIRECT LAUNCH: { agent: "known-role", task?: "...", async?: false, context?: "fresh" | "fork" }.
-Do not list first: generated packets own role names and descriptions, and runtime rejects unavailable or unauthorized targets before any child starts. Omitting async runs independently in the background; use async:false only for a legitimate non-Manager foreground run. If Manager roster recovery is needed, read .pi/agents/manager.md.
+DIRECT LAUNCH: { agent: "known-role", task?: "...", async?: true, context?: "fresh" | "fork" }.
+Do not list first: generated packets own role names and descriptions, and runtime rejects unavailable or unauthorized targets before any child starts. Omitting async means true/background; use async:false only for a legitimate non-Manager foreground run. Only when the Manager roster is missing or stale, or a known-role launch fails, recover with { action: "list" }; its results are filtered to the caller's visible roles. When this session is the generated Manager, read .pi/agents/manager.md only for that recovery.
 
 ${SUBAGENT_SAFETY_GUIDANCE}
 

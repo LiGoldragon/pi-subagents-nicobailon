@@ -66,6 +66,23 @@ describe("generated project role executor authorization", { skip: !available ? "
 		}
 	});
 
+	it("allows concurrent Manager calls that request foreground execution by forcing them async before the guard", async () => {
+		mockPi.reset();
+		mockPi.onCall({ output: "first manager child" });
+		mockPi.onCall({ output: "second manager child" });
+		const manager = role("Manager", "manager");
+		const managerExecutor = executor({ metadata: manager.projectRole!, source: "environment" }, undefined, {}, {}, false);
+		const [first, second] = await Promise.all([
+			managerExecutor.execute("manager-first", { agent: "Reader", task: "first", async: false }, new AbortController().signal, undefined, makeMinimalCtx(cwd)),
+			managerExecutor.execute("manager-second", { agent: "Reader", task: "second", async: false, clarify: true }, new AbortController().signal, undefined, makeMinimalCtx(cwd)),
+		]);
+		for (const result of [first, second]) {
+			assert.equal(result.isError, undefined);
+			assert.ok(result.details?.asyncId, "Manager foreground request must be forced to an async run");
+			assert.doesNotMatch(result.content[0]?.text ?? "", /Issue exactly ONE subagent call per turn/);
+		}
+	});
+
 	it("rejects a nested-to-nested edge atomically before a child starts", async () => {
 		mockPi.reset();
 		const planner = role("Planner", "nested", ["Reader"]);

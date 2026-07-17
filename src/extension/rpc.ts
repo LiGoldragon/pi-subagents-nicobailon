@@ -8,7 +8,7 @@ import { reconcileAsyncRun } from "../runs/background/stale-run-reconciler.ts";
 import type { SubagentParamsLike } from "../runs/foreground/subagent-executor.ts";
 import { type Details, ASYNC_DIR, RESULTS_DIR } from "../shared/types.ts";
 import { readStatus } from "../shared/utils.ts";
-import { SubagentParams } from "./schemas.ts";
+import { FullSubagentParams } from "./schemas.ts";
 import { validateChainInput } from "./chain-validation.ts";
 
 export const SUBAGENT_RPC_PROTOCOL_VERSION = 1;
@@ -88,7 +88,7 @@ class SubagentRpcError extends Error {
 	}
 }
 
-const subagentParamsValidator = Compile(SubagentParams);
+const subagentParamsValidator = Compile(FullSubagentParams);
 
 export function subagentRpcReplyEvent(requestId: string): string {
 	return `${SUBAGENT_RPC_REPLY_EVENT_PREFIX}${requestId}`;

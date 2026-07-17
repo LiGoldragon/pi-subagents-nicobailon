@@ -1589,7 +1589,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(explicit.details?.results?.[0]?.acceptance?.status, "rejected");
 	});
 
-	it("lets agent frontmatter override the global async default", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+	it("does not let legacy agent async:false override the background default", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
 		mockPi.onCall({ output: "agent foreground default finished" });
 		const executor = makeExecutor(
 			[makeAgent("echo", { defaultAsync: false })],
@@ -1606,8 +1606,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		);
 
 		assert.equal(result.isError, undefined);
-		assert.match(result.content[0]?.text ?? "", /agent foreground default finished/);
-		assert.equal(result.details?.asyncId, undefined);
+		assert.match(result.content[0]?.text ?? "", /Async:/);
+		assert.equal(typeof result.details?.asyncId, "string");
 	});
 
 	it("lets explicit single-agent launch values override frontmatter defaults", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {

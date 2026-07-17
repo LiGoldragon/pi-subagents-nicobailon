@@ -4,6 +4,7 @@ import type { AgentConfig } from "../../src/agents/agents.ts";
 import {
 	authorizeProjectRoleDispatch,
 	discoverRootManagerPolicy,
+	resolveCurrentRootProjectRolePolicy,
 	parseProjectRoleMetadata,
 	parseProjectRoleMetadataEnvironment,
 	serializeProjectRoleMetadata,
@@ -108,5 +109,13 @@ describe("caller-aware generated project role authorization", () => {
 		assert.deepEqual(visibleProjectRoles(policy(nested), agents).map((agent) => agent.name), ["Reader"]);
 		assert.deepEqual(visibleProjectRoles(policy(leaf), agents), []);
 		assert.equal(discoverRootManagerPolicy(agents)?.metadata.projectRoleIdentity, "Manager");
+		const resolvedAgents = [
+			{ ...manager, systemPrompt: "Manager root" },
+			{ ...nested, systemPrompt: "Planner root" },
+			{ ...leaf, systemPrompt: "Reader root" },
+		];
+		assert.equal(resolveCurrentRootProjectRolePolicy(resolvedAgents, "Manager root")?.metadata.projectRoleDispatchKind, "manager");
+		assert.equal(resolveCurrentRootProjectRolePolicy(resolvedAgents, "Planner root")?.metadata.projectRoleDispatchKind, "nested");
+		assert.equal(resolveCurrentRootProjectRolePolicy(resolvedAgents, "Reader root")?.metadata.projectRoleDispatchKind, "leaf");
 	});
 });

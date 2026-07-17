@@ -179,6 +179,7 @@ export interface SubagentParamsLike {
 
 interface ExecutorDeps {
 	callerRolePolicy?: CallerRolePolicy;
+	resolveCallerRolePolicy?: () => CallerRolePolicy | undefined;
 	pi: ExtensionAPI;
 	state: SubagentState;
 	config: ExtensionConfig;
@@ -265,7 +266,11 @@ function formatForegroundActivity(control: SubagentState["foregroundControls"] e
 }
 
 function callerPolicyFor(deps: ExecutorDeps, cwd: string): CallerRolePolicy | undefined {
-	return deps.callerRolePolicy ?? discoverRootManagerPolicy(deps.discoverAgents(cwd, "both").agents);
+	if (deps.callerRolePolicy) return deps.callerRolePolicy;
+	// Parent startup resolution is authoritative when available: the existence
+	// of a generated Manager file does not make every root session a Manager.
+	if (deps.resolveCallerRolePolicy) return deps.resolveCallerRolePolicy();
+	return discoverRootManagerPolicy(deps.discoverAgents(cwd, "both").agents);
 }
 
 function projectRolePolicyConfigFor(deps: ExecutorDeps) {
@@ -3886,7 +3891,11 @@ export function createSubagentExecutor(deps: ExecutorDeps): {
 		const requestParams = omitExecutionModeActionAlias(params);
 		if (requestParams.action) return execute(id, requestParams, signal, onUpdate, ctx);
 		const { depth } = checkSubagentDepth(deps.config.maxSubagentDepth);
-		const dispatchParams = applyForceTopLevelAsyncOverride(requestParams, depth, deps.config.forceTopLevelAsync === true);
+		let dispatchParams = applyForceTopLevelAsyncOverride(requestParams, depth, deps.config.forceTopLevelAsync === true);
+		const callerRolePolicy = callerPolicyFor(deps, resolveRequestedCwd(ctx.cwd, dispatchParams.cwd));
+		if (callerRolePolicy?.metadata.projectRoleDispatchKind === "manager") {
+			dispatchParams = { ...dispatchParams, async: true, clarify: false };
+		}
 		const runsForeground = dispatchParams.clarify === true || (dispatchParams.async ?? deps.asyncByDefault) !== true;
 		if (!runsForeground) return execute(id, requestParams, signal, onUpdate, ctx);
 		if (deps.state.subagentInProgress === true) return duplicateSubagentCallResult(requestParams);

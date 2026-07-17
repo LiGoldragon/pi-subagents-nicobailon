@@ -958,13 +958,9 @@ const parseAgentArgs = (
 		ctx.ui.notify("Subagent session cwd is not initialized yet", "error");
 		return null;
 	}
-	const agents = discoverAgents(state.baseCwd, "both").agents;
-	for (const step of steps) {
-		if (!agents.find((a) => a.name === step.name)) {
-			ctx.ui.notify(`Unknown agent: ${step.name}`, "error");
-			return null;
-		}
-	}
+	// The executor is the discovery and authorization authority. Slash commands
+	// preserve parsed names so package and generated-role resolution happens at
+	// execution time instead of rejecting a valid installed role from this UI.
 	if (command === "chain" && !steps[0]?.task && (perStep || !sharedTask)) {
 		ctx.ui.notify(`First step must have a task: /chain agent "task" -> agent2`, "error");
 		return null;
@@ -1080,16 +1076,8 @@ export function buildChainExpressionSteps(
 		notify("Subagent session cwd is not initialized yet");
 		return null;
 	}
-	const agents = discoverAgents(state.baseCwd, "both").agents;
-	const stepAgentNames = expression.steps.flatMap((step) =>
-		step.kind === "group" ? step.tasks.map((t) => t.name) : [step.name],
-	);
-	for (const name of stepAgentNames) {
-		if (!agents.find((a) => a.name === name)) {
-			notify(`Unknown agent: ${name}`);
-			return null;
-		}
-	}
+	// The executor resolves package and generated-role names after parsing, so
+	// chain syntax does not duplicate or stale-cache authorization here.
 	// Every task inside a parallel group needs its own task; there is no shared-task fallback.
 	for (const step of expression.steps) {
 		if (step.kind === "group" && step.tasks.some((t) => !t.task)) {
@@ -1167,9 +1155,6 @@ export function registerSlashCommands(
 			const task = firstSpace === -1 ? "" : input.slice(firstSpace + 1).trim();
 
 			if (!state.baseCwd) { ctx.ui.notify("Subagent session cwd is not initialized yet", "error"); return; }
-			const agents = discoverAgents(state.baseCwd, "both").agents;
-			if (!agents.find((a) => a.name === agentName)) { ctx.ui.notify(`Unknown agent: ${agentName}`, "error"); return; }
-
 			let finalTask = task;
 			if (inline.reads && Array.isArray(inline.reads) && inline.reads.length > 0) {
 				finalTask = `[Read from: ${inline.reads.join(", ")}]\n\n${finalTask}`;

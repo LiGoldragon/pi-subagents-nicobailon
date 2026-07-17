@@ -37,11 +37,11 @@ function inspectRegistration(config: object): { tools: Record<string, string[]>;
 }
 
 describe("extension disclosure registration", () => {
-	it("keeps minimal registration to the four-field launch tool without wait or workflow commands", () => {
+	it("keeps minimal registration to direct launch plus recovery list without wait or workflow commands", () => {
 		const registration = inspectRegistration({});
-		assert.deepEqual(registration.tools.subagent, ["agent", "async", "context", "task"]);
+		assert.deepEqual(registration.tools.subagent, ["action", "agent", "async", "context", "task"]);
 		assert.equal(registration.tools.subagent_wait, undefined);
-		for (const command of ["run", "chain", "parallel", "run-chain"]) assert.equal(registration.commands.includes(command), false);
+		for (const command of ["run", "chain", "parallel", "run-chain", "prompt-workflow", "chain-prompts"]) assert.equal(registration.commands.includes(command), false);
 	});
 
 	it("registers the full documented schema and wait tool only in explicit advanced mode", () => {
@@ -50,5 +50,14 @@ describe("extension disclosure registration", () => {
 		assert.ok(registration.tools.subagent?.includes("chain"));
 		assert.ok(registration.tools.subagent_wait);
 		assert.ok(registration.commands.includes("run"));
+		assert.ok(registration.commands.includes("prompt-workflow"));
+		assert.ok(registration.commands.includes("chain-prompts"));
+	});
+
+	it("registers packaged prompt workflows in custom mode too", () => {
+		const registration = inspectRegistration({ toolDescriptionMode: "custom" });
+		assert.ok(registration.tools.subagent?.includes("action"));
+		assert.ok(registration.commands.includes("prompt-workflow"));
+		assert.ok(registration.commands.includes("chain-prompts"));
 	});
 });

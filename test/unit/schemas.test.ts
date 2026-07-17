@@ -15,15 +15,17 @@ try {
 }
 
 describe("minimal generated-role launch schema", { skip: !schemasAvailable ? "typebox not available" : undefined }, () => {
-	it("registers only direct launch fields by default", () => {
-		assert.deepEqual(Object.keys(SubagentParams?.properties ?? {}).sort(), ["agent", "async", "context", "task"]);
+	it("registers direct launch fields plus recovery-only list by default", () => {
+		assert.deepEqual(Object.keys(SubagentParams?.properties ?? {}).sort(), ["action", "agent", "async", "context", "task"]);
 		const context = SubagentParams?.properties?.context as { enum?: string[] } | undefined;
+		const action = SubagentParams?.properties?.action as { enum?: string[] } | undefined;
 		assert.deepEqual(context?.enum, ["fresh", "fork"]);
+		assert.deepEqual(action?.enum, ["list"]);
 	});
 
 	it("keeps controls, fanout, budgets, models, and administration in full disclosure", () => {
 		const full = FullSubagentParams?.properties ?? {};
-		for (const field of ["action", "id", "tasks", "chain", "worktree", "acceptance", "toolBudget", "turnBudget", "model", "schedule", "config", "control"]) {
+		for (const field of ["id", "tasks", "chain", "worktree", "acceptance", "toolBudget", "turnBudget", "model", "schedule", "config", "control"]) {
 			assert.ok(full[field], `full schema should expose ${field}`);
 			assert.equal(SubagentParams?.properties?.[field], undefined, `minimal schema must omit ${field}`);
 		}

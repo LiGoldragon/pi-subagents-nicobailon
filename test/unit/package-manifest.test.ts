@@ -35,6 +35,8 @@ test("published extension APIs use supported package entrypoints", async () => {
 		'export { default } from "./src/extension/index.ts";',
 	);
 	assert.equal(fs.existsSync(path.join(projectRoot, "src", "api", "delegation.ts")), true);
+	assert.equal(packageJson.files?.includes("prompts/**/*"), true);
+	assert.equal(fs.existsSync(path.join(projectRoot, "prompts", "parallel-review.md")), true);
 	assert.deepEqual(packageJson.exports, {
 		".": "./index.ts",
 		"./background-work": "./src/api/background-work.ts",
