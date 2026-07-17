@@ -36,12 +36,16 @@ export interface RealSessionRunOptions {
 	timeoutMs?: number;
 	projectFiles?: Record<string, string>;
 	reportChildTools?: boolean;
+	extensionConfig?: Record<string, unknown>;
+	captureAsyncCompletion?: boolean;
 }
 
 export interface RealSessionRun {
 	responseText: string;
 	parentSession: AgentSession;
 	modelCalls: number;
+	asyncCompletions: unknown[];
+	waitForAsyncCompletion: (runId: string, timeoutMs?: number) => Promise<unknown>;
 	dispose: () => Promise<void>;
 }
 
@@ -183,6 +187,31 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 	const cwd = mkdtempSync(path.join(os.tmpdir(), "pi-real-session-cwd-"));
 	const home = mkdtempSync(path.join(os.tmpdir(), "pi-real-session-home-"));
 	const previousCwd = process.cwd();
+	const asyncCompletions: unknown[] = [];
+	const asyncCompletionCaptureKey = "__piSubagentsE2eAsyncCompletions";
+	const previousAsyncCompletions = (globalThis as Record<string, unknown>)[asyncCompletionCaptureKey];
+	const asyncCompletionWaiters = new Set<{ runId: string; resolve: (completion: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
+	const recordAsyncCompletion = (completion: unknown) => {
+		asyncCompletions.push(completion);
+		const runId = (completion as { runId?: unknown }).runId;
+		for (const waiter of asyncCompletionWaiters) {
+			if (runId !== waiter.runId) continue;
+			clearTimeout(waiter.timer);
+			asyncCompletionWaiters.delete(waiter);
+			waiter.resolve(completion);
+		}
+	};
+	const waitForAsyncCompletion = (runId: string, timeoutMs = 30_000): Promise<unknown> => {
+		const completion = asyncCompletions.find((candidate) => (candidate as { runId?: unknown }).runId === runId);
+		if (completion !== undefined) return Promise.resolve(completion);
+		return new Promise((resolve, reject) => {
+			const waiter = { runId, resolve, reject, timer: setTimeout(() => {
+				asyncCompletionWaiters.delete(waiter);
+				reject(new Error(`Timed out waiting for async completion of ${runId}.`));
+			}, timeoutMs) };
+			asyncCompletionWaiters.add(waiter);
+		});
+	};
 	const envSnapshot = new Map([
 		["HOME", process.env.HOME],
 		["USERPROFILE", process.env.USERPROFILE],
@@ -211,6 +240,15 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 			session?.dispose();
 		} catch {}
 		faux?.unregister();
+		for (const waiter of asyncCompletionWaiters) {
+			clearTimeout(waiter.timer);
+			waiter.reject(new Error("Real-session E2E disposed before async completion."));
+		}
+		asyncCompletionWaiters.clear();
+		if (options.captureAsyncCompletion) {
+			if (previousAsyncCompletions === undefined) delete (globalThis as Record<string, unknown>)[asyncCompletionCaptureKey];
+			else (globalThis as Record<string, unknown>)[asyncCompletionCaptureKey] = previousAsyncCompletions;
+		}
 		uninstallChildPi();
 		restoreEnv(envSnapshot);
 		try {
@@ -232,6 +270,22 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 		delete process.env.PI_SUBAGENT_MAX_DEPTH;
 		delete process.env.PI_SUBAGENT_PARENT_SESSION;
 		delete process.env.PI_SUBAGENTS_PI_CODING_AGENT_PACKAGE_ROOT;
+		if (options.extensionConfig) {
+			const configPath = path.join(home, "extensions", "subagent", "config.json");
+			mkdirSync(path.dirname(configPath), { recursive: true });
+			writeFileSync(configPath, JSON.stringify(options.extensionConfig), "utf-8");
+		}
+		const completionObserverPath = path.join(cwd, "async-completion-observer.mjs");
+		if (options.captureAsyncCompletion) {
+			(globalThis as Record<string, unknown>)[asyncCompletionCaptureKey] = { record: recordAsyncCompletion };
+			writeFileSync(completionObserverPath, `export default function (pi) {
+	pi.events.on("subagent:async-complete", (data) => {
+		const captured = globalThis[${JSON.stringify(asyncCompletionCaptureKey)}];
+		if (captured && typeof captured.record === "function") captured.record(data);
+	});
+}
+`, "utf-8");
+		}
 		for (const [relativePath, content] of Object.entries(options.projectFiles ?? {})) {
 			const target = path.resolve(cwd, relativePath);
 			if (target !== cwd && !target.startsWith(`${cwd}${path.sep}`)) throw new Error(`E2E project file escapes cwd: ${relativePath}`);
@@ -256,7 +310,7 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 			cwd,
 			agentDir: home,
 			settingsManager,
-			additionalExtensionPaths: [EXTENSION_PATH],
+			additionalExtensionPaths: options.captureAsyncCompletion ? [EXTENSION_PATH, completionObserverPath] : [EXTENSION_PATH],
 			noSkills: true,
 			noPromptTemplates: true,
 			noThemes: true,
@@ -304,6 +358,8 @@ export async function runRealSubagentSession(options: RealSessionRunOptions): Pr
 			responseText: responseText.trim() || session.getLastAssistantText()?.trim() || "",
 			parentSession: session,
 			modelCalls: faux.state.callCount,
+			asyncCompletions,
+			waitForAsyncCompletion,
 			dispose,
 		};
 	} catch (error) {
