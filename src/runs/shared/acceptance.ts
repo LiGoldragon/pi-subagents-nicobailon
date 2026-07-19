@@ -99,7 +99,8 @@ function inferLevel(input: {
 	const inferredReadOnly = readOnlyTask || (input.acceptanceRole === "read-only" && !taskMayWrite);
 	const roleResolvesReadOnly = input.acceptanceRole !== undefined && inferredReadOnly;
 	const keywordRiskReadOnly = input.acceptanceRole === undefined ? intent.kind === "read-only" : inferredReadOnly;
-	const risky = (Boolean(input.dynamic) && !roleResolvesReadOnly)
+	const risky = Boolean(input.async && writeTask)
+		|| (Boolean(input.dynamic) && !roleResolvesReadOnly)
 		|| (Boolean(input.dynamicGroup) && !roleResolvesReadOnly)
 		|| (!keywordRiskReadOnly && /\b(?:release|migration|migrate|security|data[- ]loss|destructive|post-review|fix pass)\b/.test(task));
 

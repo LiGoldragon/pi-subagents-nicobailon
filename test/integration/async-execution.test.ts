@@ -1147,7 +1147,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			maxSubagentDepth: 2,
 		});
 		const patchPayload = await readAsyncPayload(patchId);
-		assert.equal(patchPayload.results[0]?.acceptance?.effectiveAcceptance?.level, "checked");
+		assert.equal(patchPayload.results[0]?.acceptance?.effectiveAcceptance?.level, "reviewed");
 
 		const reviewId = `async-role-task-template-review-${Date.now().toString(36)}`;
 		executeAsyncChain(reviewId, {
@@ -1202,9 +1202,9 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const status = JSON.parse(fs.readFileSync(statusPath, "utf-8")) as AsyncStatusPayload;
 			assert.equal(payload.mode, "parallel");
 			assert.equal(payload.sessionId, "session-123");
-			assert.equal(payload.results[0]?.acceptance?.status, "checked");
+			assert.equal(payload.results[0]?.acceptance?.status, "rejected");
 			assert.equal(status.sessionId, "session-123");
-			assert.equal(status.steps?.[0]?.acceptance?.status, "checked");
+			assert.equal(status.steps?.[0]?.acceptance?.status, "rejected");
 		const outputPath = path.join(tempDir, ".pi-subagents", "artifacts", "outputs", asyncId, "async-top-output.md");
 		const outputDeadline = Date.now() + 5_000;
 		while (!fs.existsSync(outputPath)) {

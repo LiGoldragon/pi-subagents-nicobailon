@@ -1,8 +1,8 @@
 # Fork synchronization
 
 - Upstream: `nicobailon/pi-subagents`
-- Reconciled base: `315e1eb1482c4ac2d912a8d95aac4287dc7e60ac`
-- Former deployed fork base: `c940fe20e86d9ba429eebcac809ec79d478ef206` (6 ahead / 31 behind the reconciled base)
+- Reconciled base: `d6e8005e3958adea634bf27c615abac7407aedc4` (upstream v0.35.1)
+- Former deployed fork revision: `d87cd2b11477288db53ad161afb9fd82c6cae632`
 
 ## Local deltas
 

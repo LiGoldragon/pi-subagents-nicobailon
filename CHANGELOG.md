@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.35.2] - 2026-07-19
+
+### Fixed
+- Reconciled the maintained fork with upstream v0.35.1 while preserving strict reviewer acceptance, blocked command evidence, explicit-only dynamic aggregate acceptance, process-versus-acceptance provenance, and authoritative configured output-file reports.
+
 ## [0.35.1] - 2026-07-17
 
 ### Fixed

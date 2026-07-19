@@ -1070,7 +1070,6 @@ export async function executeChain(params: ChainExecutionParams): Promise<ChainE
 					return buildChainExecutionErrorResult(groupAcceptanceFailure, makeDetailsInput({ currentStepIndex: stepIndex, currentFlatIndex: globalTaskIndex - dynamicParallelStep.parallel.length }));
 				}
 			}
-			}
 			const taskResults: ParallelTaskResult[] = parallelResults.map((result, i) => ({
 				agent: result.agent,
 				taskIndex: i,
