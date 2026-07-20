@@ -585,8 +585,9 @@ export interface SingleResult {
 	agent: string;
 	task: string;
 	exitCode: number;
-	/** Child process outcome before acceptance reconciliation changes the result contract. */
-	processExitCode?: number;
+	/** Actual child process exit status before result classification; null means it terminated by signal. */
+	processExitCode?: number | null;
+	/** Whether the child process itself exited successfully, independent of tool or provider failures. */
 	processSuccess?: boolean;
 	detached?: boolean;
 	detachedReason?: string;

@@ -68,6 +68,8 @@ interface ArtifactPaths {
 
 interface RunSyncResult {
 	exitCode: number;
+	processExitCode?: number | null;
+	processSuccess?: boolean;
 	agent: string;
 	messages: unknown[];
 	error?: string;
@@ -1109,8 +1111,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 	it("does not retry on ordinary task/tool failures", async () => {
 		mockPi.onCall({
-			jsonl: [events.toolResult("bash", "process exited with code 127")],
-			exitCode: 0,
+			jsonl: [events.toolResult("bash", "process output retained for diagnostics")],
+			exitCode: 127,
 		});
 		const agents = [makeAgent("echo", {
 			model: "openai/gpt-5-mini",
@@ -2006,8 +2008,35 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const result = await runSync(tempDir, agents, "echo", "Task", {});
 
 		assert.equal(result.exitCode, 1);
+		assert.equal(result.processExitCode, null);
+		assert.equal(result.processSuccess, false);
 		assert.equal(result.error, "provider exploded");
 		assert.equal(result.progress.status, "failed");
+	});
+
+	it("does not classify successful tool output as a bash failure when the child has no final response", async () => {
+		mockPi.onCall({
+			jsonl: [
+				events.toolResult("read", "fixture: failed after timeout; Command exited with code 1"),
+				events.toolResult("bash", "fixture output: failed timeout Command exited with code 1"),
+			],
+		});
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Inspect fixture", {});
+
+		assert.equal(result.exitCode, 1);
+		assert.equal(result.processExitCode, 0);
+		assert.equal(result.processSuccess, true);
+		assert.equal(result.error, "Subagent produced no output (possible model cold-start or empty response).");
+		assert.doesNotMatch(result.error ?? "", /bash failed/i);
+	});
+
+	it("preserves an actual nonzero child process exit independently of result classification", async () => {
+		mockPi.onCall({ exitCode: 7 });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Exit nonzero", {});
+
+		assert.equal(result.exitCode, 7);
+		assert.equal(result.processExitCode, 7);
+		assert.equal(result.processSuccess, false);
 	});
 
 	it("handles abort signal (completes faster than delay)", async () => {

@@ -401,75 +401,39 @@ export function compactForegroundDetails(details: Details): Details {
 }
 
 /**
- * Detect errors in subagent execution from messages (only errors with no subsequent success)
+ * Detect explicit tool failures that remain unresolved by a later assistant response.
+ *
+ * Tool output is data, not execution provenance. In particular, successful reads and
+ * bash commands may return source fixtures, logs, or test output that mention failures.
+ * Process exit status is recorded by the runner that owns the child process.
  */
 export function detectSubagentError(messages: Message[]): ErrorInfo {
 	let lastAssistantTextIndex = -1;
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
-		if (msg.role === "assistant") {
-			const hasText = Array.isArray(msg.content) && msg.content.some(
-				(c) => c.type === "text" && "text" in c && typeof c.text === "string" && c.text.trim().length > 0,
-			);
-			if (hasText) {
-				lastAssistantTextIndex = i;
-				break;
-			}
+		if (msg.role !== "assistant") continue;
+		const hasText = Array.isArray(msg.content) && msg.content.some(
+			(c) => c.type === "text" && "text" in c && typeof c.text === "string" && c.text.trim().length > 0,
+		);
+		if (hasText) {
+			lastAssistantTextIndex = i;
+			break;
 		}
 	}
 
 	const scanStart = lastAssistantTextIndex >= 0 ? lastAssistantTextIndex + 1 : 0;
-
 	for (let i = messages.length - 1; i >= scanStart; i--) {
 		const msg = messages[i];
-		if (msg.role !== "toolResult") continue;
+		if (msg.role !== "toolResult" || !("isError" in msg) || msg.isError !== true) continue;
 		const toolName = "toolName" in msg && typeof msg.toolName === "string" ? msg.toolName : undefined;
-		const isError = "isError" in msg && msg.isError === true;
-
-		if (isError) {
-			const text = msg.content.find((c) => c.type === "text");
-			const details = text && "text" in text ? text.text : undefined;
-			const exitMatch = details?.match(/exit(?:ed)?\s*(?:with\s*)?(?:code|status)?\s*[:\s]?\s*(\d+)/i);
-			return {
-				hasError: true,
-				exitCode: exitMatch ? parseInt(exitMatch[1], 10) : 1,
-				errorType: toolName || "tool",
-				details: details?.slice(0, 200),
-			};
-		}
-
-		if (toolName !== "bash") continue;
-
-		const text = msg.content.find((c) => c.type === "text");
-		if (!text || !("text" in text)) continue;
-		const output = text.text;
-
-		const exitMatch = output.match(/exit(?:ed)?\s*(?:with\s*)?(?:code|status)?\s*[:\s]?\s*(\d+)/i);
-		if (exitMatch) {
-			const code = parseInt(exitMatch[1], 10);
-			if (code !== 0) {
-				return { hasError: true, exitCode: code, errorType: "bash", details: output.slice(0, 200) };
-			}
-		}
-
-		// NOTE: These patterns can match legitimate output (grep results, logs,
-		// testing). With the assistant-message check above, most false positives
-		// are mitigated since the agent will have responded after routine errors.
-		const fatalPatterns = [
-			/command not found/i,
-			/permission denied/i,
-			/no such file or directory/i,
-			/segmentation fault/i,
-			/killed|terminated/i,
-			/out of memory/i,
-			/connection refused/i,
-			/timeout/i,
-		];
-		for (const pattern of fatalPatterns) {
-			if (pattern.test(output)) {
-				return { hasError: true, exitCode: 1, errorType: "bash", details: output.slice(0, 200) };
-			}
-		}
+		const text = msg.content.find((content) => content.type === "text");
+		const details = text && "text" in text ? text.text : undefined;
+		return {
+			hasError: true,
+			exitCode: 1,
+			errorType: toolName || "tool",
+			details: details?.slice(0, 200),
+		};
 	}
 
 	return { hasError: false };

@@ -862,6 +862,8 @@ async function runSingleAttempt(
 			clearFinalDrainTimers();
 		});
 		proc.on("close", (code, signal) => {
+			result.processExitCode = code;
+			result.processSuccess = code === 0;
 			clearFinalDrainTimers();
 			clearStdioGuard();
 			void jsonlWriter.close().catch(() => {
@@ -937,6 +939,8 @@ async function runSingleAttempt(
 			finish(finalCode);
 		});
 		proc.on("error", (error) => {
+			result.processExitCode = null;
+			result.processSuccess = false;
 			clearFinalDrainTimers();
 			clearStdioGuard();
 			void jsonlWriter.close().catch(() => {
@@ -1413,8 +1417,7 @@ export async function runSync(
 		if (sessionFile) result.sessionFile = sessionFile;
 	}
 
-	result.processExitCode = result.exitCode;
-	result.processSuccess = result.exitCode === 0 && !result.error;
+	result.processSuccess ??= result.processExitCode === 0;
 	if (result.detached) {
 		result.acceptance = buildPendingAcceptanceLedger(effectiveAcceptance);
 	} else if (result.stopped) {

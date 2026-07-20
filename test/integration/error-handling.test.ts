@@ -49,34 +49,17 @@ describe("detectSubagentError", { skip: !detectSubagentError ? "utils not import
 		assert.equal(result.hasError, false);
 	});
 
-	it("detects fatal bash error in last tool result", () => {
+	it("does not infer a bash error from successful output", () => {
 		const messages = [
 			{ role: "assistant", content: [{ type: "text", text: "Running..." }] },
 			{
 				role: "toolResult",
 				toolName: "bash",
 				isError: false,
-				content: [{ type: "text", text: "command not found" }],
+				content: [{ type: "text", text: "command not found\nError: process exited with code 127" }],
 			},
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true);
-		assert.equal(result.errorType, "bash");
-	});
-
-	it("detects non-zero exit code in bash output", () => {
-		const messages = [
-			{ role: "assistant", content: [{ type: "text", text: "Running..." }] },
-			{
-				role: "toolResult",
-				toolName: "bash",
-				isError: false,
-				content: [{ type: "text", text: "Error: process exited with code 127" }],
-			},
-		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true);
-		assert.equal(result.exitCode, 127);
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
 	it("ignores errors before last successful tool result", () => {
@@ -143,19 +126,19 @@ describe("runSync error handling", { skip: !piAvailable ? "pi packages not avail
 		assert.ok(result.error?.includes("out of memory"));
 	});
 
-	it("detectSubagentError overrides exit 0 on hidden failure", async () => {
+	it("detectSubagentError overrides exit 0 on an explicit tool failure", async () => {
 		mockPi.onCall({
 			jsonl: [
 				events.toolStart("bash", { command: "deploy" }),
 				events.toolEnd("bash"),
-				events.toolResult("bash", "connection refused"),
+				events.toolResult("bash", "connection refused", true),
 			],
 		});
 		const agents = makeAgentConfigs(["deployer"]);
 
 		const result = await runSync(tempDir, agents, "deployer", "Deploy app", {});
 
-		assert.notEqual(result.exitCode, 0, "should detect hidden failure");
+		assert.notEqual(result.exitCode, 0, "should retain explicit tool failure");
 		assert.ok(result.error?.includes("connection refused"));
 	});
 

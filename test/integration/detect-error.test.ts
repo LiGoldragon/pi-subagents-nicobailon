@@ -80,22 +80,18 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 		assert.match(result.details!, /EISDIR/);
 	});
 
-	it("detects bash fatal pattern (permission denied, no assistant response)", () => {
+	it("does not infer a bash failure from successful output", () => {
 		const messages = [
-			toolResult("bash", "ls: permission denied: /root/secret"),
+			toolResult("bash", "ls: permission denied: /root/secret\nCommand exited with code 127\ntimeout"),
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true);
-		assert.equal(result.errorType, "bash");
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
-	it("detects bash exit code in output", () => {
+	it("keeps successful read fixture text successful", () => {
 		const messages = [
-			toolResult("bash", "error: process exited with code 127"),
+			toolResult("read", "it('failed after timeout', () => expect('Command exited with code 1').toBeDefined())"),
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true);
-		assert.equal(result.exitCode, 127);
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
 	// ---- Recovery: errors before the agent's final response are forgiven ----
@@ -129,27 +125,23 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 			"agent produced substantive output after error — not a failure");
 	});
 
-	it("ignores bash fatal pattern when agent responded after", () => {
+	it("ignores a successful bash result containing failure-like text before an assistant response", () => {
 		const messages = [
 			toolResult("bash", "ls: permission denied: /root/secret"),
 			assistantMsg("I couldn't access /root/secret, but I found the data elsewhere."),
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, false,
-			"fatal pattern before agent's text response = recovered");
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
 	// ---- Errors AFTER the last assistant text response are still caught ----
 
-	it("detects error after agent's last text response", () => {
+	it("does not infer an error after the last assistant response from successful output", () => {
 		const messages = [
 			assistantMsg("Here is my analysis..."),
 			toolResult("bash", "rm -rf /important", false),
 			toolResult("bash", "error: process exited with code 1", false),
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true);
-		assert.equal(result.exitCode, 1);
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
 	it("detects isError after agent's last text response", () => {
@@ -165,29 +157,21 @@ describe("detectSubagentError", { skip: !available ? "utils not importable" : un
 
 	// ---- Edge cases ----
 
-	it("flags error when no assistant messages at all", () => {
+	it("does not infer an error without an assistant response", () => {
 		const messages = [
 			toolResult("read", "ok"),
 			toolResult("bash", "segmentation fault"),
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true,
-			"no assistant response = no recovery evidence");
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
-	it("does not treat tool-call-only assistant message as recovery", () => {
-		// Assistant message that only contains a tool call, no text.
-		// The error at index 0 should still be detected because the tool-call-only
-		// assistant message doesn't count as recovery. The final tool result is
-		// successful to ensure this test actually distinguishes correct behavior.
+	it("does not treat tool-call-only assistant messages as terminal truth", () => {
 		const messages = [
 			toolResult("bash", "permission denied: /etc/shadow"),
 			assistantToolCall("bash"),
 			toolResult("bash", "command succeeded"),
 		];
-		const result = detectSubagentError(messages);
-		assert.equal(result.hasError, true,
-			"tool-call assistant message without text is not a recovery");
+		assert.equal(detectSubagentError(messages).hasError, false);
 	});
 
 	it("does not treat empty/whitespace assistant message as recovery", () => {
