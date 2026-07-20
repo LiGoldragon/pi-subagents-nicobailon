@@ -19,3 +19,16 @@
 | Authoritative output-file acceptance | Retained | resolved file content, not final chat prose, supplies file-only acceptance |
 
 The fork carries only the retained deltas above on top of the stated upstream base.
+
+## Certified acceptance inclusion
+
+This merge includes the certified reconciliation revision `e550e8289bcdf22cc1c4b553949deb5a70bcae2a` as a parent. The current fork already implements its retained acceptance behavior, so the current implementations remain authoritative rather than duplicating older source forms:
+
+| Certified behavior | Current witness |
+| --- | --- |
+| Strict reviewed acceptance | `src/runs/shared/acceptance.ts` rejects explicit reviewed requests that cannot supply an independent reviewer. |
+| Typed blocked evidence | `src/shared/types.ts` permits `commandsRun[].result = "blocked"`. |
+| Dynamic acceptance boundaries | `src/runs/foreground/chain-execution.ts` records group acceptance only for explicit dynamic group policy. |
+| Authoritative output-file acceptance | `src/runs/foreground/execution.ts` marks resolved file-only output as authoritative. |
+
+The newer fork retains opt-in budget controls: ordinary dispatch omits time, turn, and tool budget settings unless an explicit request or concrete external constraint requires one.
