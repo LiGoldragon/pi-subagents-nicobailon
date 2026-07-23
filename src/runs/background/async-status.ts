@@ -117,33 +117,11 @@ function isAsyncRunDir(root: string, entry: string): boolean {
 	}
 }
 
-function outputFileMtime(outputFile: string | undefined): number | undefined {
-	if (!outputFile) return undefined;
-	try {
-		return fs.statSync(outputFile).mtimeMs;
-	} catch (error) {
-		if (isNotFoundError(error)) return undefined;
-		throw new Error(`Failed to inspect async output file '${outputFile}': ${getErrorMessage(error)}`, {
-			cause: error instanceof Error ? error : undefined,
-		});
-	}
-}
-
-function deriveAsyncActivityState(asyncDir: string, status: AsyncStatus): { activityState?: ActivityState; lastActivityAt?: number } {
-	if (status.state !== "running") return { activityState: status.activityState, lastActivityAt: status.lastActivityAt };
-	const outputPath = status.outputFile ? (path.isAbsolute(status.outputFile) ? status.outputFile : path.join(asyncDir, status.outputFile)) : undefined;
-	const currentStep = typeof status.currentStep === "number" ? status.steps?.[status.currentStep] : undefined;
-	return {
-		activityState: status.activityState,
-		lastActivityAt: status.lastActivityAt ?? outputFileMtime(outputPath) ?? currentStep?.lastActivityAt ?? currentStep?.startedAt ?? status.startedAt,
-	};
-}
-
 function statusToSummary(asyncDir: string, status: AsyncStatus & { cwd?: string }, nestedWarnings: string[] = [], nestedRoute?: NestedRoute): AsyncRunSummary {
 	if (status.sessionId !== undefined && typeof status.sessionId !== "string") {
 		throw new Error(`Invalid async status '${path.join(asyncDir, "status.json")}': sessionId must be a string.`);
 	}
-	const { activityState, lastActivityAt } = deriveAsyncActivityState(asyncDir, status);
+	const { activityState, lastActivityAt } = status;
 	const steps = status.steps ?? [];
 	const chainStepCount = status.chainStepCount ?? steps.length;
 	const parallelGroups = normalizeParallelGroups(status.parallelGroups, steps.length, chainStepCount);

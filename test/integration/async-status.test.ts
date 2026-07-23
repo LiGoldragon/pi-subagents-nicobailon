@@ -107,7 +107,7 @@ describe("async status helpers", () => {
 		}
 	});
 
-	it("does not infer attention state when the runner has not persisted one", () => {
+	it("does not infer attention or activity timestamps when the runner has not persisted them", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-async-no-derived-attention-"));
 		try {
 			const now = Date.now();
@@ -115,16 +115,17 @@ describe("async status helpers", () => {
 				runId: "run-running",
 				mode: "single",
 				state: "running",
-				lastActivityAt: now - 90_000,
 				startedAt: now - 120_000,
 				lastUpdate: now,
-				steps: [{ agent: "worker", status: "running", lastActivityAt: now - 90_000 }],
+				steps: [{ agent: "worker", status: "running" }],
 			});
 
 			const runs = listAsyncRuns(root, { states: ["running"] });
 			assert.equal(runs[0]?.activityState, undefined);
+			assert.equal(runs[0]?.lastActivityAt, undefined);
 			assert.equal(runs[0]?.steps[0]?.activityState, undefined);
-			assert.match(formatAsyncRunList(runs, "Active async runs"), /worker \| running \| active/);
+			assert.equal(runs[0]?.steps[0]?.lastActivityAt, undefined);
+			assert.doesNotMatch(formatAsyncRunList(runs, "Active async runs"), /worker \| running \| active/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
