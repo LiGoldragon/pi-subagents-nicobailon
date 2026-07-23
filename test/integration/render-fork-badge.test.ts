@@ -149,6 +149,7 @@ describe("renderSubagentResult fork indicator", () => {
 					exitCode: 0,
 					messages: [],
 					usage: { ...emptyUsage, turns: 2 },
+					terminalOutcome: { kind: "done" },
 					progressSummary: { toolCount: 3, tokens: 1200, durationMs: 1500 },
 					sessionFile: "/tmp/session.jsonl",
 				}],
@@ -174,6 +175,7 @@ describe("renderSubagentResult fork indicator", () => {
 					task: "review",
 					exitCode: 1,
 					error: "boom",
+					terminalOutcome: { kind: "runtime-error", reason: "process-exit" },
 					messages: [],
 					usage: emptyUsage,
 				}],
@@ -182,7 +184,28 @@ describe("renderSubagentResult fork indicator", () => {
 
 		const text = widget.render(120).join("\n");
 		assert.match(text, /^✗ reviewer/);
-		assert.match(text, /⎿  Error: boom/);
+		assert.match(text, /⎿  Runtime error — process exited nonzero/);
+	});
+
+	it("renders a compact lifecycle-disconnect fallback as a runtime error", () => {
+		const widget = renderSubagentResult!({
+			content: [{ type: "text", text: "partial response" }],
+			details: {
+				mode: "single",
+				results: [{
+					agent: "reviewer",
+					task: "review",
+					exitCode: 0,
+					terminalOutcome: { kind: "runtime-error", reason: "lifecycle-disconnect" },
+					messages: [],
+					usage: emptyUsage,
+				}],
+			},
+		}, { expanded: false }, theme);
+
+		const text = widget.render(120).join("\n");
+		assert.match(text, /^✗ reviewer/);
+		assert.match(text, /Runtime error — child lifecycle ended before a terminal event/);
 	});
 
 	it("shows live detail hints for running subagents", () => {
@@ -302,6 +325,7 @@ describe("renderSubagentResult fork indicator", () => {
 					task: "pause",
 					exitCode: 0,
 					interrupted: true,
+					terminalOutcome: { kind: "agent-outcome", reason: "interrupted" },
 					messages: [],
 					usage: emptyUsage,
 				}],
@@ -310,7 +334,7 @@ describe("renderSubagentResult fork indicator", () => {
 
 		const text = widget.render(120).join("\n");
 		assert.match(text, /^■ chain/);
-		assert.match(text, /⎿  Paused/);
+		assert.match(text, /⎿  Agent outcome — interrupted awaiting explicit next action/);
 	});
 
 	it("keeps empty-output warnings visible in compact multi-result rendering", () => {
@@ -325,6 +349,7 @@ describe("renderSubagentResult fork indicator", () => {
 					exitCode: 0,
 					messages: [],
 					usage: emptyUsage,
+					terminalOutcome: { kind: "done" },
 				}],
 			},
 		}, { expanded: false }, theme);
@@ -539,6 +564,7 @@ describe("renderSubagentResult fork indicator", () => {
 					agent: entry.agent,
 					task: entry.task,
 					exitCode: 0,
+					terminalOutcome: { kind: "done" },
 					messages: [],
 					usage: emptyUsage,
 					progressSummary: { toolCount: 0, tokens: 0, durationMs: 1 },

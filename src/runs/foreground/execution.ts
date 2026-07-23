@@ -47,7 +47,7 @@ import {
 import { buildSkillInjection, resolveSkillsWithFallback } from "../../agents/skills.ts";
 import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
-import { classifyTerminalOutcome } from "../../shared/terminal-outcome.ts";
+import { classifyTerminalOutcome, createTerminalDiagnostics } from "../../shared/terminal-outcome.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
@@ -364,6 +364,14 @@ async function runSingleAttempt(
 			processClosed = true;
 			result.detached = true;
 			result.detachedReason = "intercom coordination";
+			// Detachment is the foreground runner's authoritative terminal decision;
+			// the child may later close after this result has already been returned.
+			result.terminalOutcome = { kind: "agent-outcome", reason: "detached" };
+			result.terminalDiagnostics = createTerminalDiagnostics({
+				process: result.terminalProcess,
+				providerError: Boolean(assistantError),
+				detached: true,
+			});
 			progress.status = "detached";
 			progress.durationMs = Date.now() - startTime;
 			result.progressSummary = {
@@ -863,21 +871,30 @@ async function runSingleAttempt(
 			clearFinalDrainTimers();
 		});
 		proc.on("close", (code, signal) => {
-			result.processExitCode = code;
-			result.processSuccess = code === 0;
-			result.terminalProcess = {
-				source: "close",
-				exitCode: code,
-				...(signal ? { signal } : {}),
-				...(forcedTerminationSignal ? { forcedTermination: true } : {}),
-				terminalEvent: cleanTerminalAssistantStopReceived ? "assistant-stop" : agentSettledReceived ? "agent-settled" : "none",
-			};
+			// Some spawn failures are followed by close. The spawn error is the
+			// authoritative process evidence and must not be replaced by that close.
+			if (result.terminalProcess?.source !== "spawn-error") {
+				result.processExitCode = code;
+				result.processSuccess = code === 0;
+				result.terminalProcess = {
+					source: "close",
+					exitCode: code,
+					...(signal ? { signal } : {}),
+					...(forcedTerminationSignal ? { forcedTermination: true } : {}),
+					terminalEvent: cleanTerminalAssistantStopReceived ? "assistant-stop" : agentSettledReceived ? "agent-settled" : "none",
+				};
+			}
 			clearFinalDrainTimers();
 			clearStdioGuard();
 			void jsonlWriter.close().catch(() => {
 				// JSONL artifact flush is best effort.
 			});
 			const toolDiagnosticError = readChildToolDiagnosticError(toolDiagnosticPath);
+			result.terminalDiagnostics = createTerminalDiagnostics({
+				process: result.terminalProcess,
+				providerError: Boolean(assistantError),
+				detached,
+			});
 			cleanupTempDir(tempDir);
 			stdoutReader.end();
 			stderrReader.end();
@@ -950,6 +967,7 @@ async function runSingleAttempt(
 			result.processExitCode = null;
 			result.processSuccess = false;
 			result.terminalProcess = { source: "spawn-error", exitCode: null, terminalEvent: "none" };
+			result.terminalDiagnostics = createTerminalDiagnostics({ process: result.terminalProcess });
 			clearFinalDrainTimers();
 			clearStdioGuard();
 			void jsonlWriter.close().catch(() => {
@@ -1006,6 +1024,8 @@ async function runSingleAttempt(
 	if (interruptedByControl) {
 		result.exitCode = 0;
 		result.interrupted = true;
+		result.terminalOutcome = { kind: "agent-outcome", reason: "interrupted" };
+		result.terminalDiagnostics ??= createTerminalDiagnostics({ process: result.terminalProcess });
 		result.error = undefined;
 		result.finalOutput = result.finalOutput || "Interrupted. Waiting for explicit next action.";
 		result.controlEvents = allControlEvents.length ? allControlEvents : undefined;
@@ -1020,6 +1040,8 @@ async function runSingleAttempt(
 	}
 	if (result.detached) {
 		result.exitCode = -2;
+		result.terminalOutcome ??= { kind: "agent-outcome", reason: "detached" };
+		result.terminalDiagnostics ??= createTerminalDiagnostics({ process: result.terminalProcess, detached: true });
 		result.finalOutput = "Detached for intercom coordination before task completion.";
 		result.outputMode = options.outputMode ?? "inline";
 		if (options.outputPath) {
@@ -1140,6 +1162,7 @@ async function runSingleAttempt(
 		? result.outputReference.message
 		: fullOutput;
 	result.controlEvents = allControlEvents.length ? allControlEvents : undefined;
+	result.terminalDiagnostics ??= createTerminalDiagnostics({ process: result.terminalProcess });
 	result.terminalOutcome = classifyTerminalOutcome({
 		process: result.terminalProcess,
 		agentOutcome: result.detached ? "detached" : result.stopped ? "stopped" : result.timedOut ? "timed-out" : result.turnBudgetExceeded ? "turn-budget" : result.interrupted ? "interrupted" : completionGuard?.triggered && !observedMutationAttempt ? "completion-guard" : undefined,
@@ -1296,6 +1319,7 @@ export async function runSync(
 			processExitCode: target.processExitCode,
 			processSuccess: target.processSuccess,
 			terminalProcess: target.terminalProcess,
+			terminalDiagnostics: target.terminalDiagnostics,
 			terminalOutcome: target.terminalOutcome,
 			error: target.error,
 			acceptance: target.acceptance,
@@ -1462,6 +1486,7 @@ export async function runSync(
 			result.progress.error = result.error;
 		}
 	}
+	result.terminalDiagnostics ??= createTerminalDiagnostics({ process: result.terminalProcess });
 	result.terminalOutcome = classifyTerminalOutcome({
 		process: result.terminalProcess,
 		agentOutcome: result.detached ? "detached" : result.stopped ? "stopped" : result.timedOut ? "timed-out" : result.turnBudgetExceeded ? "turn-budget" : result.interrupted ? "interrupted" : acceptanceRejected ? "acceptance-rejected" : result.terminalOutcome?.kind === "agent-outcome" ? result.terminalOutcome.reason : undefined,

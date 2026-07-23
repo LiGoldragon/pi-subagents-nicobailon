@@ -45,7 +45,7 @@ interface AsyncResultPayload {
 	wrapUpRequested?: boolean;
 	totalTokens?: { input: number; output: number; total: number };
 	totalCost?: { inputTokens: number; outputTokens: number; costUsd: number };
-	results: Array<{ agent?: string; output?: string; success?: boolean; error?: string; processExitCode?: number | null; processSuccess?: boolean; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; intercomTarget?: string; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string } }>; 
+	results: Array<{ agent?: string; output?: string; success?: boolean; error?: string; processExitCode?: number | null; processSuccess?: boolean; terminalDiagnostics?: { compaction?: string; provider?: string; lifecycle?: string; process?: { source?: string; terminalEvent?: string } }; terminalOutcome?: { kind: string; reason?: string }; protocolError?: { code?: string; stream?: string; limitBytes?: number; observedBytes?: number }; timedOut?: boolean; turnBudget?: { maxTurns: number; graceTurns: number; outcome: string; turnCount: number; wrapUpRequestedAtTurn?: number; exceededAtTurn?: number }; turnBudgetExceeded?: boolean; wrapUpRequested?: boolean; model?: string; attemptedModels?: string[]; modelAttempts?: Array<{ success?: boolean; error?: string }>; totalCost?: { inputTokens: number; outputTokens: number; costUsd: number }; structuredOutput?: unknown; intercomTarget?: string; acceptance?: { status?: string; effectiveAcceptance?: { level?: string }; childReport?: unknown; runtimeChecks?: Array<{ id?: string; status?: string; message?: string }> }; artifactPaths?: { outputPath?: string; inputPath?: string; metadataPath?: string } }>; 
 	outputs?: Record<string, { text?: string; structured?: unknown }>;
 	workflowGraph?: { nodes?: Array<{ kind?: string; label?: string; phase?: string; status?: string; acceptanceStatus?: string; error?: string; outputName?: string; structured?: boolean; children?: Array<{ label?: string; outputName?: string; itemKey?: string; status?: string; acceptanceStatus?: string; error?: string }> }> };
 }
@@ -459,6 +459,21 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.results[0]?.error, undefined);
 		assert.equal(payload.results[0]?.output, "settled async without a terminal assistant stop");
 		assert.ok(Date.now() - startedAt < 4000, "agent_settled should trigger bounded child cleanup");
+	});
+
+	it("background persists a child lifecycle disconnect as a runtime error without attributing its cause", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+		mockPi.onCall({ jsonl: [mockAssistantMessage("response before lifecycle disconnect", "tool_use")] });
+		const id = `async-lifecycle-disconnect-${Date.now().toString(36)}`;
+		launchProtocolTest(id);
+		const payload = await readAsyncPayload(id);
+		assert.equal(payload.results[0]?.processExitCode, 0);
+		assert.deepEqual(payload.results[0]?.terminalOutcome, { kind: "runtime-error", reason: "lifecycle-disconnect" });
+		assert.deepEqual(payload.results[0]?.terminalDiagnostics, {
+			process: { source: "close", exitCode: 0, terminalEvent: "none" },
+			compaction: "not-observed",
+			provider: "none-observed",
+			lifecycle: "missing-terminal-event",
+		});
 	});
 
 	it("keeps named output references literal in async single tasks", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {

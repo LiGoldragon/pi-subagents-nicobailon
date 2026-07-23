@@ -1,6 +1,7 @@
 import type {
 	SingleResult,
 	TerminalAgentOutcomeReason,
+	TerminalDiagnostics,
 	TerminalOutcome,
 	TerminalProcessEvidence,
 	TerminalRuntimeErrorReason,
@@ -12,6 +13,24 @@ export interface TerminalOutcomeInput {
 	runtimeError?: TerminalRuntimeErrorReason;
 	/** A runner's final, deliberate completion decision; never an effective exit-code inference. */
 	completed?: boolean;
+}
+
+export function createTerminalDiagnostics(input: {
+	process?: TerminalProcessEvidence;
+	providerError?: boolean;
+	detached?: boolean;
+}): TerminalDiagnostics {
+	const terminalEvent = input.process?.terminalEvent;
+	return {
+		...(input.process ? { process: input.process } : {}),
+		// Pi can disconnect events before aborting during compaction. This runner
+		// cannot observe that cause, so it records no attribution.
+		compaction: "not-observed",
+		provider: input.providerError ? "error-observed" : "none-observed",
+		lifecycle: terminalEvent === "assistant-stop" || terminalEvent === "agent-settled"
+			? terminalEvent
+			: input.detached ? "detached-before-close" : "missing-terminal-event",
+	};
 }
 
 /**
@@ -28,7 +47,9 @@ export function classifyTerminalOutcome(input: TerminalOutcomeInput): TerminalOu
 	if (process.source === "spawn-error") return { kind: "runtime-error", reason: "spawn-error" };
 	if (process.exitCode !== null && process.exitCode !== 0) return { kind: "runtime-error", reason: "process-exit" };
 	if (process.signal && !process.forcedTermination) return { kind: "runtime-error", reason: "process-signal" };
-	if (process.terminalEvent === "none") return { kind: "unknown-termination" };
+	// A child process closed without a terminal event. This records only the
+	// observed lifecycle gap; it intentionally does not attribute a cause.
+	if (process.terminalEvent === "none") return { kind: "runtime-error", reason: "lifecycle-disconnect" };
 	return input.completed ? { kind: "done" } : { kind: "unknown-termination" };
 }
 
@@ -69,6 +90,7 @@ const RUNTIME_REASON_LABEL: Record<TerminalRuntimeErrorReason, string> = {
 	"process-signal": "process ended by signal",
 	"spawn-error": "process could not start",
 	"protocol-error": "child protocol failed",
+	"lifecycle-disconnect": "child lifecycle ended before a terminal event",
 };
 
 export function terminalOutcomeLabel(outcome: TerminalOutcome): string {

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
 	classifyTerminalOutcome,
+	createTerminalDiagnostics,
 	resolveTerminalOutcome,
 	terminalOutcomeGlyph,
 	terminalOutcomeLabel,
@@ -31,10 +32,15 @@ test("classifies all typed terminal outcomes", () => {
 	assert.deepEqual(runtimeError, { kind: "runtime-error", reason: "process-exit" });
 	assert.equal(terminalOutcomeGlyph(runtimeError), "✗");
 
-	const unknown = classifyTerminalOutcome({
+	const lifecycleDisconnect = classifyTerminalOutcome({
 		process: { source: "close", exitCode: 0, terminalEvent: "none" },
 		completed: true,
 	});
+	assert.deepEqual(lifecycleDisconnect, { kind: "runtime-error", reason: "lifecycle-disconnect" });
+	assert.equal(terminalOutcomeLabel(lifecycleDisconnect), "Runtime error — child lifecycle ended before a terminal event");
+	assert.equal(terminalOutcomeGlyph(lifecycleDisconnect), "✗");
+
+	const unknown = classifyTerminalOutcome({ completed: true });
 	assert.deepEqual(unknown, { kind: "unknown-termination" });
 	assert.equal(terminalOutcomeLabel(unknown), "Unknown termination");
 	assert.equal(terminalOutcomeGlyph(unknown), "?");
@@ -48,7 +54,7 @@ test("completion guard wins over a successful effective process exit", () => {
 	}), { kind: "agent-outcome", reason: "completion-guard" });
 });
 
-test("classifies only witnessed harness and process errors as runtime errors", () => {
+test("classifies only witnessed lifecycle and process failures as runtime errors", () => {
 	assert.deepEqual(classifyTerminalOutcome({
 		process: { source: "spawn-error", exitCode: null, terminalEvent: "none" },
 	}), { kind: "runtime-error", reason: "spawn-error" });
@@ -59,6 +65,23 @@ test("classifies only witnessed harness and process errors as runtime errors", (
 		runtimeError: "protocol-error",
 		process: { source: "close", exitCode: 0, terminalEvent: "assistant-stop" },
 	}), { kind: "runtime-error", reason: "protocol-error" });
+});
+
+test("serializes privacy-safe process, compaction, provider, and lifecycle diagnostics", () => {
+	assert.deepEqual(createTerminalDiagnostics({
+		process: { source: "close", exitCode: 0, terminalEvent: "none" },
+		providerError: true,
+	}), {
+		process: { source: "close", exitCode: 0, terminalEvent: "none" },
+		compaction: "not-observed",
+		provider: "error-observed",
+		lifecycle: "missing-terminal-event",
+	});
+	assert.deepEqual(createTerminalDiagnostics({ detached: true }), {
+		compaction: "not-observed",
+		provider: "none-observed",
+		lifecycle: "detached-before-close",
+	});
 });
 
 test("old records use explicit fallback without treating effective exit codes as intent", () => {

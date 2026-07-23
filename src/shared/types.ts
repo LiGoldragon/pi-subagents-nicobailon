@@ -594,7 +594,8 @@ export type TerminalRuntimeErrorReason =
 	| "process-exit"
 	| "process-signal"
 	| "spawn-error"
-	| "protocol-error";
+	| "protocol-error"
+	| "lifecycle-disconnect";
 
 /** Privacy-safe facts witnessed while a child process closes; no task content or stderr. */
 export interface TerminalProcessEvidence {
@@ -603,6 +604,21 @@ export interface TerminalProcessEvidence {
 	signal?: string;
 	forcedTermination?: boolean;
 	terminalEvent: "assistant-stop" | "agent-settled" | "none";
+}
+
+/**
+ * Privacy-safe diagnostic categories for a terminal result. They deliberately
+ * exclude child stderr, task text, provider messages, and any assertion that
+ * Pi initiated compaction.
+ */
+export interface TerminalDiagnostics {
+	process?: TerminalProcessEvidence;
+	/** Pi compaction is not observable here; this records that no attribution is made. */
+	compaction: "not-observed";
+	/** Whether a provider error was observed, without serializing its content. */
+	provider: "error-observed" | "none-observed";
+	/** The lifecycle watermark observed from the child event stream. */
+	lifecycle: "assistant-stop" | "agent-settled" | "missing-terminal-event" | "detached-before-close";
 }
 
 /** Closed terminal classification. Agent decisions remain distinct from process evidence. */
@@ -622,6 +638,8 @@ export interface SingleResult {
 	processSuccess?: boolean;
 	/** Privacy-safe process-close facts persisted independently of final result handling. */
 	terminalProcess?: TerminalProcessEvidence;
+	/** Privacy-safe process, lifecycle, provider, and unattributed-compaction diagnostic categories. */
+	terminalDiagnostics?: TerminalDiagnostics;
 	/** Closed terminal classification. Absent only for records serialized before this field existed. */
 	terminalOutcome?: TerminalOutcome;
 	detached?: boolean;

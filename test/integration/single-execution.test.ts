@@ -70,6 +70,8 @@ interface RunSyncResult {
 	exitCode: number;
 	processExitCode?: number | null;
 	processSuccess?: boolean;
+	terminalOutcome?: { kind: string; reason?: string };
+	terminalDiagnostics?: { compaction?: string; provider?: string; lifecycle?: string; process?: { source?: string; terminalEvent?: string } };
 	agent: string;
 	messages: unknown[];
 	error?: string;
@@ -821,6 +823,20 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.ok(Date.now() - startedAt >= 1200, "foreground runner must not terminate during the retry delay");
 	});
 
+	it("preserves spawn-error evidence when a later process close arrives", async () => {
+		const previousBinary = process.env.PI_SUBAGENT_PI_BINARY;
+		process.env.PI_SUBAGENT_PI_BINARY = path.join(tempDir, "missing-pi-binary");
+		try {
+			const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Observe spawn failure", { acceptance: false });
+			assert.equal(result.processExitCode, null);
+			assert.deepEqual(result.terminalDiagnostics?.process, { source: "spawn-error", exitCode: null, terminalEvent: "none" });
+			assert.deepEqual(result.terminalOutcome, { kind: "runtime-error", reason: "spawn-error" });
+		} finally {
+			if (previousBinary === undefined) delete process.env.PI_SUBAGENT_PI_BINARY;
+			else process.env.PI_SUBAGENT_PI_BINARY = previousBinary;
+		}
+	});
+
 	it("treats agent_settled as a clean terminal watermark", async () => {
 		const nonTerminalMessage = events.assistantMessage("settled without a terminal assistant stop") as { message: { stopReason: string } };
 		nonTerminalMessage.message.stopReason = "length";
@@ -831,6 +847,21 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.error, undefined);
 		assert.equal(getFinalOutput(result.messages), "settled without a terminal assistant stop");
 		assert.ok(Date.now() - startedAt < 4000, "agent_settled should trigger bounded child cleanup");
+	});
+
+	it("persists a child lifecycle disconnect as a runtime error without attributing its cause", async () => {
+		const nonTerminalMessage = events.assistantMessage("response before lifecycle disconnect") as { message: { stopReason: string } };
+		nonTerminalMessage.message.stopReason = "length";
+		mockPi.onCall({ jsonl: [nonTerminalMessage] });
+		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Observe child lifecycle", { acceptance: false });
+		assert.equal(result.processExitCode, 0);
+		assert.deepEqual(result.terminalOutcome, { kind: "runtime-error", reason: "lifecycle-disconnect" });
+		assert.deepEqual(result.terminalDiagnostics, {
+			process: { source: "close", exitCode: 0, terminalEvent: "none" },
+			compaction: "not-observed",
+			provider: "none-observed",
+			lifecycle: "missing-terminal-event",
+		});
 	});
 
 	it("tracks usage from message events", async () => {
@@ -2223,6 +2254,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			assert.equal(result.exitCode, -2);
 			assert.equal(result.detached, true);
 			assert.equal(result.detachedReason, "intercom coordination");
+			assert.deepEqual(result.terminalOutcome, { kind: "agent-outcome", reason: "detached" });
+			assert.equal(result.terminalDiagnostics?.lifecycle, "detached-before-close");
 			assert.equal(result.finalOutput, "Detached for intercom coordination before task completion.");
 			assert.equal(result.progress?.status, "detached");
 			assert.equal(accepted, true);
