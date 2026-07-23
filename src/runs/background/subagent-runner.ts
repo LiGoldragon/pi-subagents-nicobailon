@@ -25,6 +25,8 @@ import {
 	type ResolvedToolBudget,
 	type SubagentRunMode,
 	type ToolBudgetState,
+	type TerminalOutcome,
+	type TerminalProcessEvidence,
 	type TurnBudgetState,
 	type Usage,
 	type WorkflowGraphSnapshot,
@@ -68,6 +70,7 @@ import { createSteeringStatus, recordSteeringRequest, steeringStatus, terminalSt
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
 import { detectSubagentError, extractTextFromContent, extractToolArgsPreview, getFinalOutput, readStatus } from "../../shared/utils.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
+import { classifyTerminalOutcome } from "../../shared/terminal-outcome.ts";
 import {
 	createMutatingFailureState,
 	didMutatingToolFail,
@@ -157,6 +160,8 @@ interface StepResult {
 	exitCode?: number | null;
 	processExitCode?: number | null;
 	processSuccess?: boolean;
+	terminalProcess?: TerminalProcessEvidence;
+	terminalOutcome?: TerminalOutcome;
 	skipped?: boolean;
 	interrupted?: boolean;
 	timedOut?: boolean;
@@ -365,6 +370,7 @@ interface RunPiStreamingResult {
 	stderr: string;
 	/** Actual child process exit status; null means signal termination or spawn failure. */
 	processExitCode: number | null;
+	terminalProcess: TerminalProcessEvidence;
 	exitCode: number | null;
 	messages: Message[];
 	usage: Usage;
@@ -762,6 +768,13 @@ function runPiStreaming(
 			resolve({
 				stderr,
 				processExitCode: exitCode,
+				terminalProcess: {
+					source: "close",
+					exitCode,
+					...(signal ? { signal } : {}),
+					...(forcedTerminationSignal ? { forcedTermination: true } : {}),
+					terminalEvent: cleanTerminalAssistantStopReceived ? "assistant-stop" : agentSettledReceived ? "agent-settled" : "none",
+				},
 				exitCode: timedOut || stopped ? 1 : turnBudgetExceeded ? 1 : interrupted || forcedDrainAfterFinalSuccess ? 0 : forcedTerminationSignal || signal ? (exitCode ?? 1) : exitCode,
 				messages,
 				usage,
@@ -799,7 +812,7 @@ function runPiStreaming(
 			const stderr = stderrTail.text();
 			const finalOutput = getFinalOutput(messages) || rawStdoutTail.text().trim();
 			const spawnErrorMessage = spawnError instanceof Error ? spawnError.message : String(spawnError);
-			resolve({ stderr, processExitCode: null, exitCode: 1, messages, usage, model, error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : error ?? assistantError ?? spawnErrorMessage, protocolError, finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage ?? "Subagent stopped by user." : timeoutMessage ?? "Subagent timed out.") : finalOutput, timedOut, stopped, turnBudget, turnBudgetExceeded, wrapUpRequested: turnBudget?.outcome === "wrap-up-requested" || turnBudgetExceeded || undefined, observedMutationAttempt, watchdog: childWatchdogState });
+			resolve({ stderr, processExitCode: null, terminalProcess: { source: "spawn-error", exitCode: null, terminalEvent: "none" }, exitCode: 1, messages, usage, model, error: stopped ? (stopMessage ?? "Subagent stopped by user.") : timedOut ? (timeoutMessage ?? "Subagent timed out.") : turnBudgetExceeded ? turnBudgetMessage : error ?? assistantError ?? spawnErrorMessage, protocolError, finalOutput: (timedOut || stopped) && !finalOutput.trim() ? (stopped ? stopMessage ?? "Subagent stopped by user." : timeoutMessage ?? "Subagent timed out.") : finalOutput, timedOut, stopped, turnBudget, turnBudgetExceeded, wrapUpRequested: turnBudget?.outcome === "wrap-up-requested" || turnBudgetExceeded || undefined, observedMutationAttempt, watchdog: childWatchdogState });
 		});
 	});
 }
@@ -974,6 +987,8 @@ async function runSingleStep(
 	sessionFile?: string;
 	intercomTarget?: string;
 	completionGuardTriggered?: boolean;
+	terminalProcess?: TerminalProcessEvidence;
+	terminalOutcome?: TerminalOutcome;
 	structuredOutput?: unknown;
 	structuredOutputPath?: string;
 	structuredOutputSchemaPath?: string;
@@ -1339,6 +1354,12 @@ async function runSingleStep(
 				: acceptanceCanFailRun
 					? (finalResult?.error ? `${finalResult.error}\n${acceptanceFailure}` : acceptanceFailure)
 					: finalResult?.error;
+	const terminalOutcome = classifyTerminalOutcome({
+		process: finalResult?.terminalProcess,
+		agentOutcome: stoppedAfterAcceptance ? "stopped" : timedOutAfterAcceptance ? "timed-out" : turnBudgetExceeded ? "turn-budget" : finalResult?.interrupted ? "interrupted" : completionGuardTriggeredFinal ? "completion-guard" : acceptanceCanFailRun ? "acceptance-rejected" : undefined,
+		runtimeError: finalResult?.protocolError ? "protocol-error" : undefined,
+		completed: effectiveFinalExitCode === 0 && !effectiveFinalError,
+	});
 
 	if (artifactPaths && ctx.artifactConfig?.enabled !== false) {
 		if (ctx.artifactConfig?.includeOutput !== false) {
@@ -1357,6 +1378,8 @@ async function runSingleStep(
 					modelAttempts,
 					processExitCode: finalResult?.processExitCode,
 					processSuccess: finalResult?.processExitCode === 0,
+					terminalProcess: finalResult?.terminalProcess,
+					terminalOutcome,
 					error: effectiveFinalError,
 					acceptance: effectiveAcceptance,
 					...(transcriptWriter ? { transcriptPath: artifactPaths.transcriptPath } : {}),
@@ -1375,6 +1398,8 @@ async function runSingleStep(
 		exitCode: effectiveFinalExitCode,
 		processExitCode: finalResult?.processExitCode,
 		processSuccess: finalResult?.processExitCode === 0,
+		terminalProcess: finalResult?.terminalProcess,
+		terminalOutcome,
 		error: effectiveFinalError,
 		protocolError: finalResult?.protocolError,
 		sessionFile: step.sessionFile,
@@ -2879,6 +2904,8 @@ async function runSubagent(
 					exitCode: pr.interrupted === true ? 0 : pr.exitCode,
 					processExitCode: pr.processExitCode,
 					processSuccess: pr.processSuccess,
+					terminalProcess: pr.terminalProcess,
+					terminalOutcome: pr.terminalOutcome,
 					skipped: pr.skipped,
 					interrupted: pr.interrupted,
 					timedOut: pr.timedOut,
@@ -3226,6 +3253,8 @@ async function runSubagent(
 						exitCode: pr.interrupted === true ? 0 : pr.exitCode,
 						processExitCode: pr.processExitCode,
 						processSuccess: pr.processSuccess,
+					terminalProcess: pr.terminalProcess,
+					terminalOutcome: pr.terminalOutcome,
 						skipped: pr.skipped,
 						interrupted: pr.interrupted,
 						timedOut: pr.timedOut,
@@ -3356,6 +3385,8 @@ async function runSubagent(
 				exitCode: stopped || childStopped ? 1 : timedOut ? 1 : singleResult.interrupted === true ? 0 : singleResult.exitCode,
 				processExitCode: singleResult.processExitCode,
 				processSuccess: singleResult.processSuccess,
+				terminalProcess: singleResult.terminalProcess,
+				terminalOutcome: singleResult.terminalOutcome,
 				sessionFile: singleResult.sessionFile,
 				intercomTarget: singleResult.intercomTarget,
 				model: singleResult.model,
@@ -3642,6 +3673,8 @@ async function runSubagent(
 				exitCode: r.exitCode,
 				processExitCode: r.processExitCode,
 				processSuccess: r.processSuccess,
+				terminalProcess: r.terminalProcess,
+				terminalOutcome: r.terminalOutcome,
 				error: r.error,
 				protocolError: r.protocolError,
 				success: r.success,

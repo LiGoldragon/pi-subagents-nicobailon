@@ -20,6 +20,7 @@ import {
 } from "../shared/types.ts";
 import { formatTokens, formatUsage, formatDuration, formatModelThinking, formatToolCall, shortenPath } from "../shared/formatters.ts";
 import { getDisplayItems, getSingleResultOutput } from "../shared/utils.ts";
+import { resolveTerminalOutcome, terminalOutcomeGlyph, terminalOutcomeLabel } from "../shared/terminal-outcome.ts";
 import { flatToLogicalStepIndex } from "../runs/background/parallel-groups.ts";
 import { formatNestedAggregate } from "../runs/shared/nested-render.ts";
 import { aggregateStepStatus, formatActivityLabel, formatAgentRunningLabel, formatParallelOutcome } from "../shared/status-format.ts";
@@ -267,13 +268,12 @@ function firstOutputLine(text: string): string {
 }
 
 function resultStatusLine(result: Details["results"][number], output: string): string {
-	if (result.detached) return result.detachedReason ? `Detached: ${result.detachedReason}` : "Detached";
-	if (result.stopped) return "Stopped";
-	if (result.interrupted) return "Paused";
-	if (result.exitCode !== 0) return `Error: ${result.error ?? (firstOutputLine(output) || `exit ${result.exitCode}`)}`;
-	if (result.acceptance?.status && result.acceptance.status !== "not-required") return `Done · acceptance: ${result.acceptance.status}`;
-	if (hasEmptyTextOutputWithoutOutputTarget(result.task, output)) return "Done (no text output)";
-	return "Done";
+	const outcome = resolveTerminalOutcome(result);
+	if (outcome.kind === "done") {
+		if (result.acceptance?.status && result.acceptance.status !== "not-required") return `Done · acceptance: ${result.acceptance.status}`;
+		if (hasEmptyTextOutputWithoutOutputTarget(result.task, output)) return "Done (no text output)";
+	}
+	return terminalOutcomeLabel(outcome);
 }
 
 function resultGlyph(result: Details["results"][number], output: string, theme: Theme, running = result.progress?.status === "running", seed = progressRunningSeed(result.progress ?? result.progressSummary), frame?: number): string {
@@ -281,12 +281,10 @@ function resultGlyph(result: Details["results"][number], output: string, theme: 
 		if (frame !== undefined) return theme.fg("accent", runningGlyph((seed ?? 0) + frame));
 		return theme.fg("accent", runningGlyph(seed));
 	}
-	if (result.detached) return theme.fg("warning", "■");
-	if (result.stopped) return theme.fg("warning", "■");
-	if (result.interrupted) return theme.fg("warning", "■");
-	if (result.exitCode !== 0) return theme.fg("error", "✗");
-	if (hasEmptyTextOutputWithoutOutputTarget(result.task, output)) return theme.fg("warning", "✓");
-	return theme.fg("success", "✓");
+	const outcome = resolveTerminalOutcome(result);
+	if (outcome.kind === "done" && hasEmptyTextOutputWithoutOutputTarget(result.task, output)) return theme.fg("warning", "✓");
+	const color = outcome.kind === "done" ? "success" : outcome.kind === "runtime-error" ? "error" : outcome.kind === "agent-outcome" ? "warning" : "dim";
+	return theme.fg(color, terminalOutcomeGlyph(outcome));
 }
 
 function compactCurrentActivity(progress: AgentProgress): string {
@@ -552,10 +550,8 @@ function buildAsyncChainStepSpans(total: number, stepCount: number, parallelGrou
 
 function isDoneResult(result: Details["results"][number]): boolean {
 	const status = result.progress?.status;
-	if (status === "completed") return true;
 	if (status === "running" || status === "pending") return false;
-	if (result.interrupted || result.detached) return false;
-	return result.exitCode === 0;
+	return resolveTerminalOutcome(result).kind === "done";
 }
 
 function workflowGraphHasStatus(details: Pick<Details, "workflowGraph">, statuses: WorkflowNodeStatus[]): boolean {
@@ -636,13 +632,14 @@ function buildMultiProgressLabel(details: Pick<Details, "mode" | "results" | "pr
 				|| details.progress?.find((progress) => progress.agent === result.agent && progress.status === "running");
 			const index = result.progress?.index ?? progressFromArray?.index ?? i;
 			if (index < 0 || index >= totalCount) continue;
+			const outcome = resolveTerminalOutcome(result);
 			const status = result.progress?.status
-				?? (result.stopped
-					? "stopped"
-					: result.interrupted || result.detached
-						? "detached"
-						: result.exitCode === 0
-							? "completed"
+				?? (outcome.kind === "done"
+					? "completed"
+					: outcome.kind === "agent-outcome" && outcome.reason === "stopped"
+						? "stopped"
+						: outcome.kind === "agent-outcome" && (outcome.reason === "interrupted" || outcome.reason === "detached")
+							? "detached"
 							: "failed");
 			statuses[index] = status;
 		}
@@ -1312,7 +1309,7 @@ function renderSingleCompact(d: Details, r: Details["results"][number], theme: T
 
 	c.addChild(new Text(truncLine(theme.fg("dim", `  ⎿  ${resultStatusLine(r, output)}`), width), 0, 0));
 	const preview = firstOutputLine(output);
-	if (preview && r.exitCode === 0 && !hasEmptyTextOutputWithoutOutputTarget(r.task, output)) {
+	if (preview && resolveTerminalOutcome(r).kind === "done" && !hasEmptyTextOutputWithoutOutputTarget(r.task, output)) {
 		c.addChild(new Text(truncLine(theme.fg("dim", `     ${preview}`), width), 0, 0));
 	}
 	if (r.sessionFile) c.addChild(new Text(truncLine(theme.fg("dim", `  session: ${shortenPath(r.sessionFile)}`), width), 0, 0));
@@ -1327,8 +1324,11 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 		|| workflowGraphHasStatus(d, ["running"]);
 	const stopped = d.results.some((r) => r.stopped && r.progress?.status !== "running")
 		|| workflowGraphHasStatus(d, ["stopped"]);
-	const failed = d.results.some((r) => !r.stopped && r.exitCode !== 0 && r.progress?.status !== "running")
-		|| workflowGraphHasStatus(d, ["failed"]);
+	const failed = d.results.some((r) => {
+		if (r.progress?.status === "running") return false;
+		const outcome = resolveTerminalOutcome(r);
+		return outcome.kind === "runtime-error" || outcome.kind === "unknown-termination";
+	}) || workflowGraphHasStatus(d, ["failed"]);
 	const paused = d.results.some((r) => (r.interrupted || r.detached) && r.progress?.status !== "running")
 		|| workflowGraphHasStatus(d, ["paused", "detached"]);
 	let totalSummary = d.progressSummary;
@@ -1406,8 +1406,9 @@ function renderMultiCompact(d: Details, theme: Theme, frame?: number): Component
 			const activity = compactCurrentActivity(rProg);
 			c.addChild(new Text(truncLine(theme.fg("dim", `    ⎿  ${activity}`), width), 0, 0));
 			c.addChild(new Text(truncLine(theme.fg("accent", `    ${liveDetailHintText()}`), width), 0, 0));
-		} else if (!rPending && (r.exitCode !== 0 || r.interrupted || r.detached || hasEmptyTextOutputWithoutOutputTarget(r.task, output))) {
-			c.addChild(new Text(truncLine(theme.fg(r.exitCode !== 0 ? "error" : "dim", `    ⎿  ${resultStatusLine(r, output)}`), width), 0, 0));
+		} else if (!rPending && (resolveTerminalOutcome(r).kind !== "done" || hasEmptyTextOutputWithoutOutputTarget(r.task, output))) {
+			const outcome = resolveTerminalOutcome(r);
+			c.addChild(new Text(truncLine(theme.fg(outcome.kind === "runtime-error" ? "error" : "dim", `    ⎿  ${resultStatusLine(r, output)}`), width), 0, 0));
 		}
 		const outputTarget = extractOutputTarget(r.task);
 		if (outputTarget) c.addChild(new Text(truncLine(theme.fg("dim", `    output: ${outputTarget}`), width), 0, 0));
@@ -1446,13 +1447,16 @@ export function renderSubagentResult(
 		const r = d.results[0];
 		if (!expanded) return renderSingleCompact(d, r, theme, frame);
 		const isRunning = r.progress?.status === "running";
+		const outcome = resolveTerminalOutcome(r);
 		const icon = isRunning
 			? theme.fg("warning", "running")
-			: r.detached
-				? theme.fg("warning", "detached")
-				: r.exitCode === 0
-					? theme.fg("success", "ok")
-					: theme.fg("error", "failed");
+			: outcome.kind === "done"
+				? theme.fg("success", "ok")
+				: outcome.kind === "runtime-error"
+					? theme.fg("error", "runtime error")
+					: outcome.kind === "agent-outcome"
+						? theme.fg("warning", "agent outcome")
+						: theme.fg("dim", "unknown termination");
 		const contextBadge = d.context === "fork" ? theme.fg("warning", " [fork]") : "";
 		const output = r.truncation?.text || getSingleResultOutput(r);
 
@@ -1543,9 +1547,9 @@ export function renderSubagentResult(
 	const hasRunning = d.progress?.some((p) => p.status === "running") 
 		|| d.results.some((r) => r.progress?.status === "running")
 		|| workflowGraphHasStatus(d, ["running"]);
-	const ok = d.results.filter((r) => r.progress?.status === "completed" || (r.exitCode === 0 && r.progress?.status !== "running")).length;
+	const ok = d.results.filter((r) => r.progress?.status === "completed" || (r.progress?.status !== "running" && resolveTerminalOutcome(r).kind === "done")).length;
 	const hasEmptyWithoutTarget = d.results.some((r) =>
-		r.exitCode === 0
+		resolveTerminalOutcome(r).kind === "done"
 		&& r.progress?.status !== "running"
 		&& hasEmptyTextOutputWithoutOutputTarget(r.task, getSingleResultOutput(r)),
 	);
@@ -1601,8 +1605,8 @@ export function renderSubagentResult(
 		? d.chainAgents
 				.map((agent, i) => {
 					const result = d.results[i];
-					const isFailed = result && result.exitCode !== 0 && result.progress?.status !== "running";
-					const isComplete = result && result.exitCode === 0 && result.progress?.status !== "running";
+					const isFailed = result && resolveTerminalOutcome(result).kind !== "done" && result.progress?.status !== "running";
+					const isComplete = result && resolveTerminalOutcome(result).kind === "done" && result.progress?.status !== "running";
 					const isEmptyWithoutTarget = Boolean(result)
 						&& Boolean(isComplete)
 						&& hasEmptyTextOutputWithoutOutputTarget(result.task, getSingleResultOutput(result));
@@ -1677,13 +1681,18 @@ export function renderSubagentResult(
 		const stepNumber = typeof rProg?.index === "number" ? rProg.index + 1 : i + 1;
 
 		const resultOutput = getSingleResultOutput(r);
+		const outcome = resolveTerminalOutcome(r);
 		const statusIcon = rRunning
 			? theme.fg("warning", "running")
-			: r.exitCode !== 0
-				? theme.fg("error", "failed")
-				: hasEmptyTextOutputWithoutOutputTarget(r.task, resultOutput)
-					? theme.fg("warning", "warning")
-					: theme.fg("success", "done");
+			: outcome.kind === "runtime-error"
+				? theme.fg("error", "runtime error")
+				: outcome.kind === "agent-outcome"
+					? theme.fg("warning", "agent outcome")
+					: outcome.kind === "unknown-termination"
+						? theme.fg("dim", "unknown termination")
+						: hasEmptyTextOutputWithoutOutputTarget(r.task, resultOutput)
+							? theme.fg("warning", "warning")
+							: theme.fg("success", "done");
 		const stats = rProg ? ` | ${rProg.toolCount} tools, ${formatDuration(rProg.durationMs)}` : "";
 		const modelDisplay = modelThinkingBadge(theme, r.model);
 		const stepLabel = resultRowLabel(d, multiLabel, i, stepNumber);

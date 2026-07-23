@@ -581,6 +581,37 @@ export interface ProtocolOutputLimit {
 	diagnosticTail: string;
 }
 
+export type TerminalAgentOutcomeReason =
+	| "completion-guard"
+	| "acceptance-rejected"
+	| "stopped"
+	| "timed-out"
+	| "turn-budget"
+	| "interrupted"
+	| "detached";
+
+export type TerminalRuntimeErrorReason =
+	| "process-exit"
+	| "process-signal"
+	| "spawn-error"
+	| "protocol-error";
+
+/** Privacy-safe facts witnessed while a child process closes; no task content or stderr. */
+export interface TerminalProcessEvidence {
+	source: "close" | "spawn-error";
+	exitCode: number | null;
+	signal?: string;
+	forcedTermination?: boolean;
+	terminalEvent: "assistant-stop" | "agent-settled" | "none";
+}
+
+/** Closed terminal classification. Agent decisions remain distinct from process evidence. */
+export type TerminalOutcome =
+	| { kind: "done" }
+	| { kind: "agent-outcome"; reason: TerminalAgentOutcomeReason }
+	| { kind: "runtime-error"; reason: TerminalRuntimeErrorReason }
+	| { kind: "unknown-termination" };
+
 export interface SingleResult {
 	agent: string;
 	task: string;
@@ -589,6 +620,10 @@ export interface SingleResult {
 	processExitCode?: number | null;
 	/** Whether the child process itself exited successfully, independent of tool or provider failures. */
 	processSuccess?: boolean;
+	/** Privacy-safe process-close facts persisted independently of final result handling. */
+	terminalProcess?: TerminalProcessEvidence;
+	/** Closed terminal classification. Absent only for records serialized before this field existed. */
+	terminalOutcome?: TerminalOutcome;
 	detached?: boolean;
 	detachedReason?: string;
 	interrupted?: boolean;

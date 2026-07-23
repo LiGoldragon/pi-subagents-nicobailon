@@ -47,6 +47,7 @@ import {
 import { buildSkillInjection, resolveSkillsWithFallback } from "../../agents/skills.ts";
 import { buildAgentMemoryInjection } from "../../agents/agent-memory.ts";
 import { evaluateCompletionMutationGuard } from "../shared/completion-guard.ts";
+import { classifyTerminalOutcome } from "../../shared/terminal-outcome.ts";
 import { getPiSpawnCommand } from "../shared/pi-spawn.ts";
 import { createJsonlWriter } from "../../shared/jsonl-writer.ts";
 import { attachPostExitStdioGuard, trySignalChild } from "../../shared/post-exit-stdio-guard.ts";
@@ -864,6 +865,13 @@ async function runSingleAttempt(
 		proc.on("close", (code, signal) => {
 			result.processExitCode = code;
 			result.processSuccess = code === 0;
+			result.terminalProcess = {
+				source: "close",
+				exitCode: code,
+				...(signal ? { signal } : {}),
+				...(forcedTerminationSignal ? { forcedTermination: true } : {}),
+				terminalEvent: cleanTerminalAssistantStopReceived ? "assistant-stop" : agentSettledReceived ? "agent-settled" : "none",
+			};
 			clearFinalDrainTimers();
 			clearStdioGuard();
 			void jsonlWriter.close().catch(() => {
@@ -941,6 +949,7 @@ async function runSingleAttempt(
 		proc.on("error", (error) => {
 			result.processExitCode = null;
 			result.processSuccess = false;
+			result.terminalProcess = { source: "spawn-error", exitCode: null, terminalEvent: "none" };
 			clearFinalDrainTimers();
 			clearStdioGuard();
 			void jsonlWriter.close().catch(() => {
@@ -1131,6 +1140,12 @@ async function runSingleAttempt(
 		? result.outputReference.message
 		: fullOutput;
 	result.controlEvents = allControlEvents.length ? allControlEvents : undefined;
+	result.terminalOutcome = classifyTerminalOutcome({
+		process: result.terminalProcess,
+		agentOutcome: result.detached ? "detached" : result.stopped ? "stopped" : result.timedOut ? "timed-out" : result.turnBudgetExceeded ? "turn-budget" : result.interrupted ? "interrupted" : completionGuard?.triggered && !observedMutationAttempt ? "completion-guard" : undefined,
+		runtimeError: result.protocolError ? "protocol-error" : undefined,
+		completed: result.exitCode === 0 && !result.error,
+	});
 	if (options.onUpdate) {
 		const finalText = result.finalOutput || result.error || "(no output)";
 		const progressSnapshot = snapshotProgress(progress);
@@ -1280,6 +1295,8 @@ export async function runSync(
 			toolCount: target.progressSummary?.toolCount,
 			processExitCode: target.processExitCode,
 			processSuccess: target.processSuccess,
+			terminalProcess: target.terminalProcess,
+			terminalOutcome: target.terminalOutcome,
 			error: target.error,
 			acceptance: target.acceptance,
 			...(transcriptWriter ? { transcriptPath: artifactPathsResult.transcriptPath } : {}),
@@ -1436,7 +1453,8 @@ export async function runSync(
 	}
 	const acceptanceFailure = acceptanceFailureMessage(result.acceptance);
 	stripAcceptanceReportsFromMessages(result.messages);
-	if (acceptanceFailure && result.acceptance.explicit && result.exitCode === 0 && !result.detached && !result.interrupted && !result.timedOut) {
+	const acceptanceRejected = Boolean(acceptanceFailure && result.acceptance.explicit && result.exitCode === 0 && !result.detached && !result.interrupted && !result.timedOut);
+	if (acceptanceRejected) {
 		result.exitCode = 1;
 		result.error = result.error ? `${result.error}\n${acceptanceFailure}` : acceptanceFailure;
 		if (result.progress) {
@@ -1444,6 +1462,12 @@ export async function runSync(
 			result.progress.error = result.error;
 		}
 	}
+	result.terminalOutcome = classifyTerminalOutcome({
+		process: result.terminalProcess,
+		agentOutcome: result.detached ? "detached" : result.stopped ? "stopped" : result.timedOut ? "timed-out" : result.turnBudgetExceeded ? "turn-budget" : result.interrupted ? "interrupted" : acceptanceRejected ? "acceptance-rejected" : result.terminalOutcome?.kind === "agent-outcome" ? result.terminalOutcome.reason : undefined,
+		runtimeError: result.protocolError ? "protocol-error" : undefined,
+		completed: result.exitCode === 0 && !result.error,
+	});
 	persistResultMetadata(result);
 
 	return result;
