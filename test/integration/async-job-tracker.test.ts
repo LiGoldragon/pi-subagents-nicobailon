@@ -1042,43 +1042,26 @@ describe("async job tracker", { skip: !available ? "pi packages not available" :
 		}
 	});
 
-	it("does not bridge active-long-running records to intercom", async () => {
+
+	it("ignores retired control records", async () => {
 		const asyncRoot = createTempDir("pi-async-job-tracker-");
 		try {
-			const runDir = path.join(asyncRoot, "run-active-intercom");
+			const runDir = path.join(asyncRoot, "run-retired-control");
 			fs.mkdirSync(runDir, { recursive: true });
 			fs.writeFileSync(path.join(runDir, "status.json"), JSON.stringify({
-				runId: "run-active-intercom",
-				mode: "single",
-				state: "running",
-				startedAt: Date.now() - 1000,
-				lastUpdate: Date.now(),
-				steps: [{ agent: "worker", status: "running" }],
+				runId: "run-retired-control", mode: "single", state: "running", startedAt: Date.now() - 1000, lastUpdate: Date.now(), steps: [{ agent: "worker", status: "running" }],
 			}), "utf-8");
 			fs.writeFileSync(path.join(runDir, "events.jsonl"), `${JSON.stringify({
-				type: "subagent.control",
-				channels: ["event", "intercom"],
-				event: {
-					type: "active_long_running",
-					to: "active_long_running",
-					ts: 123,
-					runId: "run-active-intercom",
-					agent: "worker",
-					message: "worker is still active but long-running",
-				},
-				intercom: { to: "main", message: "stale active notice" },
+				type: "subagent.control", channels: ["event", "intercom"],
+				event: { type: "retired", to: "retired", ts: 123, runId: "run-retired-control", agent: "worker", message: "retired control record" },
+				intercom: { to: "main", message: "retired control record" },
 			})}\n`, "utf-8");
-
 			const state = createState();
 			const recorder = createEventRecorder();
-			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, {
-				pollIntervalMs: 10,
-			});
-			tracker.handleStarted({ id: "run-active-intercom", asyncDir: runDir, agent: "worker" });
-
+			const tracker = trackerMod!.createAsyncJobTracker(recorder.pi, state as never, asyncRoot, { pollIntervalMs: 10 });
+			tracker.handleStarted({ id: "run-retired-control", asyncDir: runDir, agent: "worker" });
 			await new Promise((resolve) => setTimeout(resolve, 30));
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-event"), true);
-			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-intercom"), false);
+			assert.equal(recorder.events.some((event) => event.channel === "subagent:control-event" || event.channel === "subagent:control-intercom"), false);
 		} finally {
 			removeTempDir(asyncRoot);
 		}

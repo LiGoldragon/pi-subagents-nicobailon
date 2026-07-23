@@ -214,8 +214,8 @@ Inspect
 		const got = handleManagementAction("get", { agent: "background-reviewer" }, ctx);
 		assert.equal(got.isError, false);
 		assert.match(readText(got), /Async: false/);
-		assert.match(readText(got), /Timeout: 120000ms/);
-		assert.match(readText(got), /Turn budget: \{"maxTurns":8,"graceTurns":2\}/);
+		assert.match(readText(got), /Legacy timeout frontmatter \(not applied to launches\): 120000ms/);
+		assert.match(readText(got), /Legacy turn-budget frontmatter \(not applied to launches\): \{\"maxTurns\":8,\"graceTurns\":2\}/);
 		assert.match(readText(got), /Acceptance: \{"level":"none","reason":"lightweight reviewer"\}/);
 
 		const updated = handleUpdate(

@@ -3458,7 +3458,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.results[0].error, "provider exploded");
 	});
 
-	it("background runs do not emit liveness control events from child turns", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("background runs do not emit attention events from elapsed time or child activity", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({
 			steps: [
 				{ jsonl: [events.assistantMessage("still working")] },
@@ -3481,19 +3481,15 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			maxSubagentDepth: 2,
 			controlConfig: {
 				enabled: true,
-				needsAttentionAfterMs: 1,
-				activeNoticeAfterTurns: 1,
-				activeNoticeAfterMs: 1,
-				activeNoticeAfterTokens: 1,
 				failedToolAttemptsBeforeAttention: 3,
-				notifyOn: ["active_long_running", "needs_attention"],
+				notifyOn: ["needs_attention"],
 				notifyChannels: ["event", "async", "intercom"],
 			},
 		});
 
 		await waitForAsyncResultFile(id, 10_000);
 		const eventText = fs.existsSync(eventsPath) ? fs.readFileSync(eventsPath, "utf-8") : "";
-		assert.doesNotMatch(eventText, /"type":"active_long_running"/);
+		assert.doesNotMatch(eventText, /"type":"needs_attention"/);
 	});
 
 	it("background runs escalate repeated mutating tool failures", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
@@ -3522,12 +3518,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			maxSubagentDepth: 2,
 			controlConfig: {
 				enabled: true,
-				needsAttentionAfterMs: 999_999,
-				activeNoticeAfterTurns: 999_999,
-				activeNoticeAfterMs: 999_999,
-				activeNoticeAfterTokens: 999_999,
 				failedToolAttemptsBeforeAttention: 3,
-				notifyOn: ["active_long_running", "needs_attention"],
+				notifyOn: ["needs_attention"],
 				notifyChannels: ["event", "async", "intercom"],
 			},
 		});

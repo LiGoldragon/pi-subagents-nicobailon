@@ -365,13 +365,8 @@ export function readAsyncRecoveryDescriptor(asyncDir: string | undefined): Steer
 		if (!parsed.controlConfig || typeof parsed.controlConfig !== "object" || Array.isArray(parsed.controlConfig)) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig must be an object.`);
 		const control = parsed.controlConfig as Record<string, unknown>;
 		if (typeof control.enabled !== "boolean") throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.enabled must be a boolean.`);
-		for (const field of ["needsAttentionAfterMs", "activeNoticeAfterMs", "failedToolAttemptsBeforeAttention"] as const) {
-			if (!Number.isInteger(control[field]) || (control[field] as number) < 1) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.${field} must be a positive integer.`);
-		}
-		for (const field of ["activeNoticeAfterTurns", "activeNoticeAfterTokens"] as const) {
-			if (control[field] !== undefined && (!Number.isInteger(control[field]) || (control[field] as number) < 1)) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.${field} must be a positive integer.`);
-		}
-		if (!Array.isArray(control.notifyOn) || control.notifyOn.some((item) => item !== "active_long_running" && item !== "needs_attention")) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.notifyOn is invalid.`);
+		if (!Number.isInteger(control.failedToolAttemptsBeforeAttention) || (control.failedToolAttemptsBeforeAttention as number) < 1) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.failedToolAttemptsBeforeAttention must be a positive integer.`);
+		if (!Array.isArray(control.notifyOn) || control.notifyOn.some((item) => item !== "needs_attention")) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.notifyOn is invalid.`);
 		if (!Array.isArray(control.notifyChannels) || control.notifyChannels.some((item) => item !== "event" && item !== "async" && item !== "intercom")) throw new Error(`Invalid async recovery descriptor '${descriptorPath}': controlConfig.notifyChannels is invalid.`);
 	}
 	if (parsed.acceptance !== undefined) {

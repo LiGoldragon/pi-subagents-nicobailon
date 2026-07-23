@@ -68,7 +68,7 @@ import {
 	resolveCurrentPath,
 	shouldEscalateMutatingFailures,
 	summarizeRecentMutatingFailures,
-} from "../shared/long-running-guard.ts";
+} from "../shared/mutating-failure-guard.ts";
 import { acceptanceFailureMessage, buildSkippedAcceptanceLedger, evaluateAcceptance, formatAcceptancePrompt, resolveEffectiveAcceptance, stripAcceptanceReport } from "../shared/acceptance.ts";
 import { appendTurnBudgetSystemPrompt, formatTurnBudgetOutput, initialTurnBudgetState, shouldAbortForTurnBudget, turnBudgetExceededMessage, turnBudgetSoftNote, turnBudgetState } from "../shared/turn-budget.ts";
 import { initialToolBudgetState, toolBudgetState } from "../shared/tool-budget.ts";
@@ -470,8 +470,7 @@ async function runSingleAttempt(
 		let pendingToolResult: { tool: string; path?: string; mutates: boolean; startedAt?: number } | undefined;
 		const mutatingFailures = createMutatingFailureState();
 		const mutatingFailureWindowMs = 5 * 60_000;
-		const currentToolDurationMs = (now: number) => progress.currentToolStartedAt ? Math.max(0, now - progress.currentToolStartedAt) : undefined;
-		const emitNeedsAttention = (now: number, input: { message?: string; reason?: ControlEvent["reason"]; recentFailureSummary?: string; currentTool?: string; currentPath?: string; currentToolDurationMs?: number } = {}): boolean => {
+		const emitNeedsAttention = (now: number, input: { message?: string; reason?: ControlEvent["reason"]; recentFailureSummary?: string; currentTool?: string; currentPath?: string } = {}): boolean => {
 			if (!controlConfig.enabled) return false;
 			const previous = progress.activityState;
 			progress.activityState = "needs_attention";
@@ -483,14 +482,12 @@ async function runSingleAttempt(
 				agent: agent.name,
 				index: options.index,
 				ts: now,
-				lastActivityAt: progress.lastActivityAt,
 				message: input.message,
-				reason: input.reason ?? "idle",
+				reason: input.reason,
 				turns: result.usage.turns,
 				tokens: progress.tokens,
 				toolCount: progress.toolCount,
 				currentTool: input.currentTool ?? progress.currentTool,
-				currentToolDurationMs: input.currentToolDurationMs ?? currentToolDurationMs(now),
 				currentPath: input.currentPath ?? progress.currentPath,
 				recentFailureSummary: input.recentFailureSummary,
 			});
@@ -698,7 +695,6 @@ async function runSingleAttempt(
 							reason: "tool_failures",
 							currentTool: toolSnapshot.tool,
 							currentPath: toolSnapshot.path,
-							currentToolDurationMs: toolSnapshot.startedAt ? Math.max(0, now - toolSnapshot.startedAt) : undefined,
 							recentFailureSummary: summarizeRecentMutatingFailures(mutatingFailures),
 						});
 					}

@@ -31,6 +31,8 @@ describe("minimal generated-role launch schema", { skip: !schemasAvailable ? "ty
 			assert.ok(full[field], `full schema should expose ${field}`);
 			assert.equal(SubagentParams?.properties?.[field], undefined, `minimal schema must omit ${field}`);
 		}
+		const control = full.control as { properties?: Record<string, unknown> } | undefined;
+		assert.deepEqual(Object.keys(control?.properties ?? {}).sort(), ["enabled", "failedToolAttemptsBeforeAttention", "notifyChannels", "notifyOn"]);
 	});
 
 	it("materially reduces default startup context", () => {

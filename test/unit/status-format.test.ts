@@ -7,9 +7,8 @@ import type { AsyncJobStep } from "../../src/shared/types.ts";
 describe("status format helpers", () => {
 	it("formats activity labels consistently", () => {
 		assert.equal(formatActivityLabel(1_000, undefined, 1_500), "active now");
-		assert.equal(formatActivityLabel(1_000, "needs_attention", 4_000), "no activity for 3s");
-		assert.equal(formatActivityLabel(undefined, "active_long_running", 4_000), "active but long-running");
-		assert.equal(formatActivityLabel(4_000, "active_long_running", 4_000), "active but long-running · last activity now");
+		assert.equal(formatActivityLabel(1_000, "needs_attention", 4_000), "needs attention");
+		assert.equal(formatActivityLabel(undefined, "needs_attention", 4_000), "needs attention");
 	});
 
 	it("formats max thinking from model suffixes and explicit metadata", () => {

@@ -1,5 +1,5 @@
 import type { Message } from "@earendil-works/pi-ai";
-import { isMutatingBashCommand } from "./long-running-guard.ts";
+import { isMutatingBashCommand } from "./mutating-failure-guard.ts";
 import { expectsImplementationMutation } from "./task-intent.ts";
 
 export { expectsImplementationMutation };

@@ -568,8 +568,8 @@ function formatAgentDetail(agent: AgentConfig): string {
 	lines.push(`Inherit skills: ${agent.inheritSkills ? "true" : "false"}`);
 	if (agent.defaultContext) lines.push(`Default context: ${agent.defaultContext}`);
 	if (agent.defaultAsync !== undefined) lines.push(`Async: ${agent.defaultAsync ? "true" : "false"}`);
-	if (agent.defaultTimeoutMs !== undefined) lines.push(`Timeout: ${agent.defaultTimeoutMs}ms`);
-	if (agent.defaultTurnBudget) lines.push(`Turn budget: ${JSON.stringify(agent.defaultTurnBudget)}`);
+	if (agent.defaultTimeoutMs !== undefined) lines.push(`Legacy timeout frontmatter (not applied to launches): ${agent.defaultTimeoutMs}ms`);
+	if (agent.defaultTurnBudget) lines.push(`Legacy turn-budget frontmatter (not applied to launches): ${JSON.stringify(agent.defaultTurnBudget)}`);
 	if (agent.defaultAcceptance !== undefined) lines.push(`Acceptance: ${typeof agent.defaultAcceptance === "object" ? JSON.stringify(agent.defaultAcceptance) : String(agent.defaultAcceptance)}`);
 	if (agent.acceptanceRole) lines.push(`Acceptance role: ${agent.acceptanceRole}`);
 	if (agent.source === "builtin") lines.push(`Disabled: ${agent.disabled ? "true" : "false"}`);

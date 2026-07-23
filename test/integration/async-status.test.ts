@@ -101,7 +101,7 @@ describe("async status helpers", () => {
 			assert.equal(runs[0]?.activityState, "needs_attention");
 			assert.equal(runs[0]?.steps[0]?.activityState, "needs_attention");
 			const text = formatAsyncRunList(runs, "Active async runs");
-			assert.match(text, /no activity for/);
+			assert.match(text, /needs attention/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
@@ -152,7 +152,7 @@ describe("async status helpers", () => {
 			assert.equal(runs[0]?.steps[0]?.activityState, "needs_attention");
 			assert.equal(runs[0]?.steps[1]?.activityState, undefined);
 			const text = formatAsyncRunList(runs, "Active async runs");
-			assert.match(text, /idle \| running \| no activity for/);
+			assert.match(text, /idle \| running \| needs attention/);
 			assert.match(text, /active \| running \| active/);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });

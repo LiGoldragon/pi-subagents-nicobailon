@@ -80,7 +80,7 @@ import {
 	resolveCurrentPath,
 	shouldEscalateMutatingFailures,
 	summarizeRecentMutatingFailures,
-} from "../shared/long-running-guard.ts";
+} from "../shared/mutating-failure-guard.ts";
 import { parseSessionTokens } from "../../shared/session-tokens.ts";
 import type { TokenUsage } from "../../shared/types.ts";
 import {
@@ -2255,7 +2255,6 @@ async function runSubagent(
 						tokens: step.tokens?.total,
 						toolCount: step.toolCount,
 						currentTool: toolSnapshot.tool,
-						currentToolDurationMs: toolSnapshot.startedAt ? Math.max(0, now - toolSnapshot.startedAt) : undefined,
 						currentPath: toolSnapshot.path,
 						recentFailureSummary: summarizeRecentMutatingFailures(state),
 					}));

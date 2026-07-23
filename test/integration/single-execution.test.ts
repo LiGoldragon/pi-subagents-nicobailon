@@ -639,7 +639,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	});
 
 
-	it("does not emit liveness control events after a turn threshold", async () => {
+	it("does not emit control events from ordinary child activity", async () => {
 		mockPi.onCall({
 			jsonl: [
 				events.assistantMessage("first update"),
@@ -651,7 +651,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", {
 			runId: "run-active",
-			controlConfig: { enabled: true, activeNoticeAfterTurns: 2, activeNoticeAfterMs: 1, activeNoticeAfterTokens: 1, notifyOn: ["active_long_running", "needs_attention"] },
+			controlConfig: { enabled: true },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
 		});
 
@@ -681,7 +681,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		const result = await runSync(tempDir, agents, "worker", "Implement the approved fixes", {
 			runId: "run-failures",
-			controlConfig: { enabled: true, failedToolAttemptsBeforeAttention: 3, notifyOn: ["active_long_running", "needs_attention"] },
+			controlConfig: { enabled: true, failedToolAttemptsBeforeAttention: 3, notifyOn: ["needs_attention"] },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
 		});
 
@@ -705,7 +705,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", {
 			runId: "run-control-disabled",
-			controlConfig: { enabled: false, activeNoticeAfterTurns: 1, activeNoticeAfterMs: 1, activeNoticeAfterTokens: 1, notifyOn: ["active_long_running", "needs_attention"] },
+			controlConfig: { enabled: false, notifyOn: ["needs_attention"] },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
 		});
 
@@ -1566,7 +1566,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(mockPi.callCount(), 0);
 	});
 
-	it("applies agent frontmatter defaults to single-agent launches", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
+	it("keeps omitted per-call limits indefinite despite legacy agent frontmatter", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
 		const executor = makeExecutor([
 			makeAgent("echo", {
 				defaultAsync: true,
@@ -1586,8 +1586,8 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		assert.equal(result.isError, undefined);
 		assert.match(result.content[0]?.text ?? "", /Async:/);
 		assert.equal(typeof result.details?.asyncId, "string");
-		assert.equal(result.details?.timeoutMs, 2_000);
-		assert.deepEqual(result.details?.turnBudget, { maxTurns: 4, graceTurns: 2 });
+		assert.equal(result.details?.timeoutMs, undefined);
+		assert.equal(result.details?.turnBudget, undefined);
 	});
 
 	it("applies agent acceptance defaults and lets explicit calls override them", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
@@ -1641,7 +1641,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	});
 
 	it("lets explicit single-agent launch values override frontmatter defaults", { skip: !createSubagentExecutor ? "executor not importable" : undefined }, async () => {
-		mockPi.onCall({ output: "explicit foreground finished" });
+		mockPi.onCall({ delay: 50, output: "explicit foreground finished" });
 		const executor = makeExecutor([
 			makeAgent("echo", {
 				defaultAsync: true,

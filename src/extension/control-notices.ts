@@ -73,7 +73,7 @@ export function handleSubagentControlNotice(input: {
 	details: SubagentControlMessageDetails;
 	foregroundDelayMs?: number;
 }): void {
-	if (!input.details?.event || input.details.event.type === "active_long_running") return;
+	if (!input.details?.event || input.details.event.type !== "needs_attention") return;
 	if (input.details.source !== "foreground") {
 		deliverControlNotice(input);
 		return;

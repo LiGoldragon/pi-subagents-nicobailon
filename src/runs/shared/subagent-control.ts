@@ -13,8 +13,6 @@ const DEFAULT_NOTIFY_ON: ControlEventType[] = ["needs_attention"];
 
 export const DEFAULT_CONTROL_CONFIG: ResolvedControlConfig = {
 	enabled: true,
-	needsAttentionAfterMs: 60_000,
-	activeNoticeAfterMs: 240_000,
 	failedToolAttemptsBeforeAttention: 3,
 	notifyOn: DEFAULT_NOTIFY_ON,
 	notifyChannels: CONTROL_NOTIFICATION_CHANNELS,
@@ -39,16 +37,6 @@ export function resolveControlConfig(
 	override?: ControlConfig,
 ): ResolvedControlConfig {
 	const enabled = override?.enabled ?? globalConfig?.enabled ?? DEFAULT_CONTROL_CONFIG.enabled;
-	const needsAttentionAfterMs = parsePositiveInt(override?.needsAttentionAfterMs)
-		?? parsePositiveInt(globalConfig?.needsAttentionAfterMs)
-		?? DEFAULT_CONTROL_CONFIG.needsAttentionAfterMs;
-	const activeNoticeAfterMs = parsePositiveInt(override?.activeNoticeAfterMs)
-		?? parsePositiveInt(globalConfig?.activeNoticeAfterMs)
-		?? DEFAULT_CONTROL_CONFIG.activeNoticeAfterMs;
-	const activeNoticeAfterTurns = parsePositiveInt(override?.activeNoticeAfterTurns)
-		?? parsePositiveInt(globalConfig?.activeNoticeAfterTurns);
-	const activeNoticeAfterTokens = parsePositiveInt(override?.activeNoticeAfterTokens)
-		?? parsePositiveInt(globalConfig?.activeNoticeAfterTokens);
 	const failedToolAttemptsBeforeAttention = parsePositiveInt(override?.failedToolAttemptsBeforeAttention)
 		?? parsePositiveInt(globalConfig?.failedToolAttemptsBeforeAttention)
 		?? DEFAULT_CONTROL_CONFIG.failedToolAttemptsBeforeAttention;
@@ -60,25 +48,10 @@ export function resolveControlConfig(
 		?? DEFAULT_CONTROL_CONFIG.notifyChannels;
 	return {
 		enabled,
-		needsAttentionAfterMs,
-		activeNoticeAfterMs,
-		activeNoticeAfterTurns,
-		activeNoticeAfterTokens,
 		failedToolAttemptsBeforeAttention,
 		notifyOn: [...notifyOn],
 		notifyChannels: [...notifyChannels],
 	};
-}
-
-export function deriveActivityState(_input: {
-	config: ResolvedControlConfig;
-	startedAt: number;
-	lastActivityAt?: number;
-	now?: number;
-}): ActivityState | undefined {
-	// Timestamps are manual inspection facts, never a liveness signal. Silence
-	// must not turn a running child into an attention event or notification.
-	return undefined;
 }
 
 export function buildControlEvent(input: {
@@ -89,39 +62,32 @@ export function buildControlEvent(input: {
 	agent: string;
 	index?: number;
 	ts?: number;
-	lastActivityAt?: number;
 	message?: string;
 	reason?: ControlEvent["reason"];
 	turns?: number;
 	tokens?: number;
 	toolCount?: number;
 	currentTool?: string;
-	currentToolDurationMs?: number;
 	currentPath?: string;
-	elapsedMs?: number;
 	recentFailureSummary?: string;
 }): ControlEvent {
-	const ts = input.ts ?? Date.now();
 	const type = input.type ?? "needs_attention";
-	const elapsedMs = input.elapsedMs ?? (input.lastActivityAt ? Math.max(0, ts - input.lastActivityAt) : undefined);
 	const message = input.message ?? `${input.agent} needs attention`;
 	return {
 		type,
 		...(input.from ? { from: input.from } : {}),
 		to: input.to,
-		ts,
+		ts: input.ts ?? Date.now(),
 		runId: input.runId,
 		agent: input.agent,
 		...(input.index !== undefined ? { index: input.index } : {}),
 		message,
-		reason: input.reason ?? (type === "active_long_running" ? "active_long_running" : "idle"),
+		...(input.reason ? { reason: input.reason } : {}),
 		...(input.turns !== undefined ? { turns: input.turns } : {}),
 		...(input.tokens !== undefined ? { tokens: input.tokens } : {}),
 		...(input.toolCount !== undefined ? { toolCount: input.toolCount } : {}),
 		...(input.currentTool ? { currentTool: input.currentTool } : {}),
-		...(input.currentToolDurationMs !== undefined ? { currentToolDurationMs: input.currentToolDurationMs } : {}),
 		...(input.currentPath ? { currentPath: input.currentPath } : {}),
-		...(elapsedMs !== undefined ? { elapsedMs } : {}),
 		...(input.recentFailureSummary ? { recentFailureSummary: input.recentFailureSummary } : {}),
 	};
 }
@@ -132,7 +98,7 @@ export function shouldNotifyControlEvent(config: ResolvedControlConfig, event: C
 
 export function controlNotificationKey(event: ControlEvent, childIntercomTarget?: string): string {
 	const childKey = childIntercomTarget ?? (event.index !== undefined ? `${event.runId}:${event.index}` : event.runId);
-	return `${childKey}:${event.type}:${event.reason ?? "idle"}`;
+	return `${childKey}:${event.type}:${event.reason ?? "attention"}`;
 }
 
 export function claimControlNotification(config: ResolvedControlConfig, event: ControlEvent, seenKeys: Set<string>, childIntercomTarget?: string): boolean {
@@ -141,17 +107,6 @@ export function claimControlNotification(config: ResolvedControlConfig, event: C
 	if (seenKeys.has(key)) return false;
 	seenKeys.add(key);
 	return true;
-}
-
-function formatLongRunningFacts(event: ControlEvent): string | undefined {
-	const facts: string[] = [];
-	if (event.elapsedMs !== undefined) facts.push(`elapsed ${Math.floor(Math.max(0, event.elapsedMs) / 1000)}s`);
-	if (event.turns !== undefined) facts.push(`${event.turns} turns`);
-	if (event.tokens !== undefined) facts.push(`${event.tokens} tokens`);
-	if (event.toolCount !== undefined) facts.push(`${event.toolCount} tools`);
-	if (event.currentTool) facts.push(`tool ${event.currentTool}${event.currentToolDurationMs !== undefined ? ` ${Math.floor(Math.max(0, event.currentToolDurationMs) / 1000)}s` : ""}`);
-	if (event.currentPath) facts.push(`path ${event.currentPath}`);
-	return facts.length > 0 ? facts.join(" | ") : undefined;
 }
 
 export function formatControlNoticeMessage(event: ControlEvent, childIntercomTarget?: string): string {
@@ -168,21 +123,6 @@ export function formatControlNoticeMessage(event: ControlEvent, childIntercomTar
 
 	const nudgeMessage = "What are you blocked on? Reply with the smallest next step or ask for a decision.";
 	const nudgeCommand = `subagent({ action: "resume", id: "${runTarget}", ${event.index !== undefined ? `index: ${event.index}, ` : ""}message: "${nudgeMessage}" })`;
-	if (event.type === "active_long_running") {
-		const facts = formatLongRunningFacts(event);
-		return [
-			`Subagent active but long-running: ${event.agent}`,
-			`Run: ${runTarget}${event.index !== undefined ? ` step ${event.index + 1}` : ""}`,
-			`Signal: ${event.message}`,
-			facts ? `Facts: ${facts}` : undefined,
-			"Hint: Inspect status, then nudge if the work seems stuck. Live async nudges interrupt the child before sending the follow-up.",
-			`Nudge: ${nudgeCommand}`,
-			childIntercomTarget ? `Direct intercom target: ${childIntercomTarget}` : undefined,
-			`Status: subagent({ action: "status", id: "${runTarget}" })`,
-			`Interrupt: subagent({ action: "interrupt", id: "${runTarget}" })`,
-		].filter((line): line is string => Boolean(line)).join("\n");
-	}
-
 	return [
 		`Subagent needs attention: ${event.agent}`,
 		`Run: ${runTarget}${event.index !== undefined ? ` step ${event.index + 1}` : ""}`,
@@ -197,19 +137,13 @@ export function formatControlNoticeMessage(event: ControlEvent, childIntercomTar
 }
 
 export function formatControlIntercomMessage(event: ControlEvent, childIntercomTarget?: string): string {
-	const statusLabel = event.reason === "completion_guard"
-		? "subagent failed"
-		: event.type === "active_long_running"
-			? "subagent active but long-running"
-			: "subagent needs attention";
+	const statusLabel = event.reason === "completion_guard" ? "subagent failed" : "subagent needs attention";
 	return [
 		statusLabel,
 		"",
 		event.reason === "completion_guard"
 			? `${event.agent} failed in run ${event.runId}.`
-			: event.type === "active_long_running"
-				? `${event.agent} is still active but long-running in run ${event.runId}.`
-				: `${event.agent} needs attention in run ${event.runId}.`,
+			: `${event.agent} needs attention in run ${event.runId}.`,
 		"",
 		formatControlNoticeMessage(event, childIntercomTarget),
 	].join("\n");
