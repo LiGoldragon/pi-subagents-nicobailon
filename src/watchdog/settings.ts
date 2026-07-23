@@ -85,7 +85,6 @@ export const DEFAULT_WATCHDOG_CONFIG: ResolvedWatchdogConfig = {
 	},
 	children: {
 		enabled: false,
-		watchdogTailTimeoutMs: 120_000,
 		autoFollow: {
 			blockers: true,
 			maxAttempts: 3,
@@ -130,7 +129,7 @@ const WATCHDOG_FIELDS = new Set([
 const GUIDANCE_FIELDS = new Set(["watchdogMd", "systemPromptPath"]);
 const AUTO_FOLLOW_FIELDS = new Set(["blockers", "maxAttempts", "stalemateRepeats"]);
 const ENDPOINT_FIELDS = new Set(["enabled", "model", "thinking"]);
-const CHILDREN_FIELDS = new Set(["enabled", "model", "thinking", "watchdogTailTimeoutMs", "autoFollow", "overrides"]);
+const CHILDREN_FIELDS = new Set(["enabled", "model", "thinking", "autoFollow", "overrides"]);
 const CHILD_OVERRIDE_FIELDS = new Set(["enabled", "model", "thinking"]);
 const ASYNC_COMPLETION_FIELDS = new Set(["enabled", "autoFollowBlockers"]);
 const LSP_FIELDS = new Set(["enabled", "timeoutMs", "maxFiles", "maxDiagnostics"]);
@@ -268,9 +267,6 @@ function parseChildrenPatch(value: unknown, field: string, meta: ParseMeta): Wat
 	if ("enabled" in input) patch.enabled = parseBoolean(input.enabled, `${field}.enabled`, meta);
 	if ("model" in input) patch.model = parseNonEmptyString(input.model, `${field}.model`, meta);
 	if ("thinking" in input) patch.thinking = parseThinking(input.thinking, `${field}.thinking`, meta);
-	if ("watchdogTailTimeoutMs" in input) {
-		patch.watchdogTailTimeoutMs = parseInteger(input.watchdogTailTimeoutMs, `${field}.watchdogTailTimeoutMs`, meta, "a positive integer", (candidate) => candidate >= 1);
-	}
 	if ("autoFollow" in input) patch.autoFollow = parseAutoFollowPatch(input.autoFollow, `${field}.autoFollow`, meta);
 	if ("overrides" in input) {
 		const overrides = parseObject(input.overrides, `${field}.overrides`, meta);

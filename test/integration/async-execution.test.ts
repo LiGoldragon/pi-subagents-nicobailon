@@ -449,8 +449,8 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.ok(Date.now() - startedAt >= 1200, "background runner must not terminate during the retry delay");
 	});
 
-	it("background treats agent_settled as a clean terminal watermark", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
-		mockPi.onCall({ jsonl: [mockAssistantMessage("settled async without a terminal assistant stop", "tool_use"), { type: "agent_settled" }], keepAliveAfterFinalMessageMs: 5000 });
+	it("background waits for process close after agent_settled", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+		mockPi.onCall({ jsonl: [mockAssistantMessage("settled async without a terminal assistant stop", "tool_use"), { type: "agent_settled" }], keepAliveAfterFinalMessageMs: 25 });
 		const id = `async-lifecycle-settled-${Date.now().toString(36)}`;
 		const startedAt = Date.now();
 		launchProtocolTest(id);
@@ -458,7 +458,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.success, true);
 		assert.equal(payload.results[0]?.error, undefined);
 		assert.equal(payload.results[0]?.output, "settled async without a terminal assistant stop");
-		assert.ok(Date.now() - startedAt < 4000, "agent_settled should trigger bounded child cleanup");
+		assert.ok(Date.now() - startedAt < 4000, "the runner should complete after the child exits");
 	});
 
 	it("background persists a child lifecycle disconnect as a runtime error without attributing its cause", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
@@ -3241,7 +3241,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			const id = `async-watchdog-unconfigured-${Date.now().toString(36)}`;
 			mockPi.onCall({
 				jsonl: [events.assistantMessage("async-done-without-watchdog-config"), childWatchdogStatus(id, "reviewing", 1)],
-				keepAliveAfterFinalMessageMs: 10000,
+				keepAliveAfterFinalMessageMs: 25,
 			});
 
 			const start = Date.now();
@@ -3275,7 +3275,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 					{ jsonl: [events.assistantMessage("async-done-before-watchdog"), childWatchdogStatus(id, "reviewing", 1)] },
 					{ delay: 1400, jsonl: [childWatchdogStatus(id, "idle", 2)] },
 				],
-				keepAliveAfterFinalMessageMs: 10000,
+				keepAliveAfterFinalMessageMs: 25,
 			});
 
 			const start = Date.now();
@@ -3297,17 +3297,17 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			assert.ok(elapsed < 9000, `settled watchdog should still allow async cleanup, took ${elapsed}ms`);
 			assert.equal(payload.success, true);
 			assert.equal(payload.results[0]?.output, "async-done-before-watchdog");
-			assert.equal((payload.results[0] as { watchdog?: { phase?: string } }).watchdog?.phase, "idle");
+			assert.equal((payload.results[0] as { watchdog?: unknown }).watchdog, undefined);
 		});
 	});
 
-	it("background child watchdog tail timeout still finalizes successful output", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("background does not convert a pending child watchdog into a timeout", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		await withIsolatedWatchdogSettings(tempDir, async () => {
 			writeWatchdogSettings(tempDir, 150);
 			const id = `async-watchdog-timeout-${Date.now().toString(36)}`;
 			mockPi.onCall({
 				jsonl: [events.assistantMessage("async-done-before-watchdog-timeout"), childWatchdogStatus(id, "reviewing", 1)],
-				keepAliveAfterFinalMessageMs: 10000,
+				keepAliveAfterFinalMessageMs: 25,
 			});
 
 			const start = Date.now();
@@ -3325,12 +3325,10 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			const resultPath = await waitForAsyncResultFile(id, 10_000);
 			const elapsed = Date.now() - start;
 			const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
-			assert.ok(elapsed < 6000, `watchdog tail fallback should not hang async final drain, took ${elapsed}ms`);
+			assert.ok(elapsed < 6000, `the process exit should finalize the run, took ${elapsed}ms`);
 			assert.equal(payload.success, true);
 			assert.equal(payload.results[0]?.output, "async-done-before-watchdog-timeout");
-			const watchdog = (payload.results[0] as { watchdog?: { phase?: string; timedOut?: boolean } }).watchdog;
-			assert.equal(watchdog?.phase, "stale");
-			assert.equal(watchdog?.timedOut, true);
+			assert.equal((payload.results[0] as { watchdog?: unknown }).watchdog, undefined);
 		});
 	});
 
@@ -3338,7 +3336,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		mockPi.onCall({
 			jsonl: [events.assistantMessage("async-done-before-drain")],
 			stderr: "Done after 1 turn(s). Ready for input.\n",
-			keepAliveAfterFinalMessageMs: 10000,
+			keepAliveAfterFinalMessageMs: 25,
 		});
 
 		const id = `async-final-drain-${Date.now().toString(36)}`;
@@ -3384,7 +3382,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 	it("background forced drain after empty terminal assistant output is cleanup success", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({
 			jsonl: [events.assistantMessage("")],
-			keepAliveAfterFinalMessageMs: 10000,
+			keepAliveAfterFinalMessageMs: 25,
 		});
 
 		const id = `async-final-drain-empty-${Date.now().toString(36)}`;
@@ -3430,7 +3428,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 					usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0.001 } },
 				},
 			}],
-			keepAliveAfterFinalMessageMs: 10000,
+			keepAliveAfterFinalMessageMs: 25,
 		});
 
 		const id = `async-final-drain-error-${Date.now().toString(36)}`;
@@ -3460,7 +3458,7 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		assert.equal(payload.results[0].error, "provider exploded");
 	});
 
-	it("background runs emit active-long-running control events from child turns", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("background runs do not emit liveness control events from child turns", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({
 			steps: [
 				{ jsonl: [events.assistantMessage("still working")] },
@@ -3471,7 +3469,6 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 		const id = `async-active-long-${Date.now().toString(36)}`;
 		const asyncDir = path.join(ASYNC_DIR, id);
 		const eventsPath = path.join(asyncDir, "events.jsonl");
-		const resultPath = path.join(RESULTS_DIR, `${id}.json`);
 
 		executeAsyncSingle(id, {
 			agent: "scout",
@@ -3484,48 +3481,19 @@ describe("async execution utilities", { skip: !available ? "pi packages not avai
 			maxSubagentDepth: 2,
 			controlConfig: {
 				enabled: true,
-				needsAttentionAfterMs: 999_999,
+				needsAttentionAfterMs: 1,
 				activeNoticeAfterTurns: 1,
-				activeNoticeAfterMs: 999_999,
-				activeNoticeAfterTokens: 999_999,
+				activeNoticeAfterMs: 1,
+				activeNoticeAfterTokens: 1,
 				failedToolAttemptsBeforeAttention: 3,
 				notifyOn: ["active_long_running", "needs_attention"],
 				notifyChannels: ["event", "async", "intercom"],
 			},
 		});
 
-		const statusPath = path.join(asyncDir, "status.json");
-		const deadline = Date.now() + 10_000;
-		let eventText = "";
-		let statusDuringEvent: AsyncStatusPayload | undefined;
-		while (Date.now() < deadline) {
-			if (fs.existsSync(eventsPath)) {
-				eventText = fs.readFileSync(eventsPath, "utf-8");
-			}
-			if (eventText.includes('"type":"active_long_running"') && fs.existsSync(statusPath)) {
-				const status = JSON.parse(fs.readFileSync(statusPath, "utf-8")) as AsyncStatusPayload;
-				if (status.activityState === "active_long_running" && status.steps?.[0]?.activityState === "active_long_running") {
-					statusDuringEvent = status;
-					break;
-				}
-			}
-			if (eventText.includes('"type":"active_long_running"') && fs.existsSync(resultPath)) {
-				assert.fail("run completed before status.json exposed active_long_running");
-			}
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
-
-		assert.match(eventText, /"type":"active_long_running"/);
-		assert.match(eventText, /"reason":"turn_threshold"/);
-		assert.ok(statusDuringEvent, "expected status.json to expose active_long_running while the run is still active");
-		assert.equal(statusDuringEvent.activityState, "active_long_running");
-		assert.equal(statusDuringEvent.steps?.[0]?.activityState, "active_long_running");
-
-		const doneDeadline = Date.now() + 10_000;
-		while (!fs.existsSync(resultPath)) {
-			if (Date.now() > doneDeadline) assert.fail(`Timed out waiting for async result file: ${resultPath}`);
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
+		await waitForAsyncResultFile(id, 10_000);
+		const eventText = fs.existsSync(eventsPath) ? fs.readFileSync(eventsPath, "utf-8") : "";
+		assert.doesNotMatch(eventText, /"type":"active_long_running"/);
 	});
 
 	it("background runs escalate repeated mutating tool failures", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {

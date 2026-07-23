@@ -55,7 +55,6 @@ describe("watchdog settings", () => {
 		assert.equal(result.config.delivery, "held");
 		assert.equal(result.config.showDuringRun, false);
 		assert.equal(result.config.agentEndTimeoutMs, 30_000);
-		assert.equal(result.config.children.watchdogTailTimeoutMs, 120_000);
 		assert.equal(result.config.autoFollow.maxAttempts, 3);
 		assert.deepEqual(result.config.lsp, { enabled: true, timeoutMs: 3000, maxFiles: 20, maxDiagnostics: 50 });
 	});

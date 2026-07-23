@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { buildCompletionKey, markSeenWithTtl } from "./completion-dedupe.ts";
+import { buildCompletionKey, getGlobalSeenMap, markSeenWithTtl, PSYCHE_VISIBLE_COMPLETION_SEEN_STORE } from "./completion-dedupe.ts";
 import { createFileCoalescer } from "../../shared/file-coalescer.ts";
 import {
 	SUBAGENT_ASYNC_COMPLETE_EVENT,
@@ -108,6 +108,7 @@ export function createResultWatcher(
 } {
 	const fsApi = deps.fs ?? fs;
 	const timers = deps.timers ?? { setTimeout, clearTimeout, setInterval, clearInterval };
+	const psycheVisibleCompletions = getGlobalSeenMap(PSYCHE_VISIBLE_COMPLETION_SEEN_STORE);
 
 	const handleResult = async (file: string) => {
 		const resultPath = path.join(resultsDir, file);
@@ -129,6 +130,7 @@ export function createResultWatcher(
 			}
 			const now = Date.now();
 			const completionKey = buildCompletionKey(data, `result:${file}`);
+			const psycheVisibleCompletionKey = buildCompletionKey(data, "completion");
 			if (markSeenWithTtl(state.completionSeen, completionKey, now, completionTtlMs)) {
 				fsApi.unlinkSync(resultPath);
 				return;
@@ -188,7 +190,12 @@ export function createResultWatcher(
 					asyncDir: data.asyncDir,
 				});
 				const delivered = await deliverSubagentResultIntercomEvent(pi.events, payload);
-				if (!delivered) {
+				if (delivered) {
+					// The intercom result is already psyche-visible. Reserve the same
+					// logical completion identity used by notify.ts before emitting its
+					// machine-only completion event below.
+					markSeenWithTtl(psycheVisibleCompletions, psycheVisibleCompletionKey, now, completionTtlMs);
+				} else {
 					console.error(`Subagent async grouped result intercom delivery was not acknowledged for '${resultPath}'.`);
 				}
 			}

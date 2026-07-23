@@ -94,7 +94,7 @@ function completionResult(overrides: Record<string, unknown> = {}) {
 }
 
 describe("registerSubagentNotify", () => {
-	it("uses a truthful fallback summary when an accountable completion is empty", () => {
+	it("keeps machine completion events from interrupting an active psyche conversation", () => {
 		const { events, sent } = createPi();
 
 		events.emit(SUBAGENT_ASYNC_COMPLETE_EVENT, {
@@ -114,7 +114,7 @@ describe("registerSubagentNotify", () => {
 				content: "Background task completed: **worker**\n\nCompleted without a textual summary. Inspect the accountable background run for details.",
 				display: true,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		});
 	});
 
@@ -140,7 +140,7 @@ describe("registerSubagentNotify", () => {
 				content: "Detached foreground task completed: **reviewer**\n\nRecovered final review",
 				display: true,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		});
 	});
 
@@ -181,7 +181,7 @@ describe("registerSubagentNotify", () => {
 				content: `Background task completed: **worker** (2/3)\n\n${summary}`,
 				display: true,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		});
 	});
 
@@ -205,7 +205,7 @@ describe("registerSubagentNotify", () => {
 				content: "Background task completed: **worker**\n\nDone\n\nSession file: /tmp/session.jsonl",
 				display: true,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		}]);
 	});
 
@@ -229,7 +229,7 @@ describe("registerSubagentNotify", () => {
 				content: "Background task paused: **worker**\n\nPaused after interrupt. Waiting for explicit next action.",
 				display: true,
 			},
-			options: { triggerTurn: true },
+			options: { triggerTurn: false },
 		});
 	});
 
@@ -340,7 +340,7 @@ describe("registerSubagentNotify", () => {
 		assert.match(content, /^Background tasks completed \(3\): \*\*alpha\*\*, \*\*beta\*\*, \*\*gamma\*\*/);
 		assert.match(content, /1\. alpha\nalpha done/);
 		assert.match(content, /3\. gamma\ngamma done/);
-		assert.deepEqual(sent[0]!.options, { triggerTurn: true });
+		assert.deepEqual(sent[0]!.options, { triggerTurn: false });
 	});
 
 	it("ignores successes from other sessions instead of grouping them", () => {

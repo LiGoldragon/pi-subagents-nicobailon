@@ -11,7 +11,6 @@ export interface ChildWatchdogConfig {
 	runId?: string;
 	agent?: string;
 	childIndex?: number;
-	watchdogTailTimeoutMs: number;
 	agentEndTimeoutMs: number;
 	maxWarnings: number | null;
 	model?: string;
@@ -60,7 +59,6 @@ export function resolveChildWatchdogConfig(input: {
 		...(input.runId ? { runId: input.runId } : {}),
 		...(input.agent ? { agent: input.agent } : {}),
 		...(input.childIndex !== undefined ? { childIndex: input.childIndex } : {}),
-		watchdogTailTimeoutMs: input.config.children.watchdogTailTimeoutMs,
 		agentEndTimeoutMs: input.config.agentEndTimeoutMs,
 		maxWarnings: input.config.maxWarnings,
 		...(model ? { model } : {}),
@@ -152,7 +150,6 @@ export function decodeChildWatchdogConfig(raw: string | undefined): ChildWatchdo
 		...(runId ? { runId } : {}),
 		...(agent ? { agent } : {}),
 		...(childIndex !== undefined ? { childIndex } : {}),
-		watchdogTailTimeoutMs: childConfigPositiveInteger(parsed, "watchdogTailTimeoutMs"),
 		agentEndTimeoutMs: childConfigPositiveInteger(parsed, "agentEndTimeoutMs"),
 		maxWarnings: childConfigNullableNonNegativeInteger(parsed, "maxWarnings"),
 		...(model ? { model } : {}),

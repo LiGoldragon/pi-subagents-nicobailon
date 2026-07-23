@@ -249,17 +249,13 @@ export const ChainItem = Type.Object({
 });
 
 const ControlOverrides = Type.Object({
-	enabled: Type.Optional(Type.Boolean({ description: "Enable/disable subagent control attention tracking for this run" })),
-	needsAttentionAfterMs: Type.Optional(Type.Integer({ minimum: 1, description: "No-observed-activity window before a run needs attention" })),
-	activeNoticeAfterMs: Type.Optional(Type.Integer({ minimum: 1, description: "Active-long-running notice threshold by elapsed ms (default: 240000)" })),
-	activeNoticeAfterTurns: Type.Optional(Type.Integer({ minimum: 1, description: "Optional active-long-running notice threshold by assistant turns (disabled by default)" })),
-	activeNoticeAfterTokens: Type.Optional(Type.Integer({ minimum: 1, description: "Optional active-long-running notice threshold by total tokens (disabled by default)" })),
-	failedToolAttemptsBeforeAttention: Type.Optional(Type.Integer({ minimum: 1, description: "Consecutive mutating-tool failures before escalating to needs_attention (default: 3)" })),
-	notifyOn: Type.Optional(Type.Array(Type.String({ enum: ["active_long_running", "needs_attention"] }), {
-		description: "Control event types that should notify the parent/orchestrator. Defaults to active_long_running and needs_attention.",
+	enabled: Type.Optional(Type.Boolean({ description: "Enable/disable non-silence subagent control reporting for this run" })),
+	failedToolAttemptsBeforeAttention: Type.Optional(Type.Integer({ minimum: 1, description: "Consecutive mutating-tool failures before reporting needs_attention (default: 3)" })),
+	notifyOn: Type.Optional(Type.Array(Type.String({ enum: ["needs_attention"] }), {
+		description: "Non-silence control event types to report. Only explicit tool-failure attention is supported.",
 	})),
 	notifyChannels: Type.Optional(Type.Array(Type.String({ enum: ["event", "async", "intercom"] }), {
-		description: "Notification channels to use when available. Defaults to event, async, and intercom.",
+		description: "Notification channels to use when a non-silence control event occurs.",
 	})),
 });
 
@@ -345,11 +341,11 @@ const SubagentParamsSchema = Type.Object({
 	acceptance: Type.Optional(AcceptanceOverride),
 });
 
-const MINIMAL_LAUNCH_PARAMETERS = new Set(["action", "agent", "task", "async", "context"]);
+const MINIMAL_LAUNCH_PARAMETERS = new Set(["action", "agent", "task", "async", "context", "id", "view"]);
 
 const CompactRecoveryListAction = Type.Optional(Type.String({
-	enum: ["list"],
-	description: "Optional recovery inventory. Dispatch known roles directly; use action: 'list' only when the generated roster is missing, stale, or a known-role launch fails. Results are filtered to caller visibility.",
+	enum: ["list", "status"],
+	description: "Recovery/manual status: list after a missing roster or failed launch; status with id, fleet for active workers/timestamps.",
 }));
 
 function buildCompactSubagentParams() {

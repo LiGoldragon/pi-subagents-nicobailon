@@ -24,7 +24,7 @@ describe("preference-adapted tool disclosure", () => {
 		assert.doesNotMatch(description, /async\?: false/);
 		assert.doesNotMatch(description, /CHAIN:/);
 		assert.doesNotMatch(description, /schedule-list/);
-		assert.doesNotMatch(description, /action: "status"/);
+		assert.match(description, /action: "status"/);
 		assert.ok(description.length < FULL_SUBAGENT_TOOL_DESCRIPTION.length / 3);
 	});
 

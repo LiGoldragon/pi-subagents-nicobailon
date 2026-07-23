@@ -31,5 +31,5 @@ export function handleSubagentSteeringNotice(input: {
 		content: noticeText,
 		display: true,
 		details: { ...input.details, noticeText },
-	}, { triggerTurn: true });
+	}, { triggerTurn: false });
 }

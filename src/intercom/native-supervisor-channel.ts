@@ -82,6 +82,12 @@ const IntercomParamsSchema = Type.Object({
 	replyTo: Type.Optional(Type.String()),
 }, { additionalProperties: false });
 
+const ParentSupervisorParamsSchema = Type.Object({
+	action: Type.String({ enum: ["pending", "reply", "status"] }),
+	message: Type.Optional(Type.String()),
+	replyTo: Type.Optional(Type.String()),
+}, { additionalProperties: false });
+
 function safeSegment(value: string): string {
 	return value.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
 }
@@ -294,7 +300,7 @@ export function registerNativeSupervisorClient(pi: ExtensionAPI, options: { incl
 		const tool: ToolDefinition<typeof ContactSupervisorParamsSchema, Record<string, unknown>> = {
 			name: "contact_supervisor",
 			label: "Contact Supervisor",
-			description: "Contact the parent/supervisor session for a blocking decision, structured interview, or progress update.",
+			description: "Child-only parent contact. Valid reasons: need_decision, interview_request, progress_update. This tool can contact only the spawning parent; it cannot reply to siblings or unrelated sessions.",
 			parameters: ContactSupervisorParamsSchema,
 			execute(_id, params, signal) {
 				return sendSupervisorRequest(params as ContactSupervisorParams, signal);
@@ -559,13 +565,14 @@ function publicPendingRequests(pending: Map<string, PendingSupervisorRequest>): 
 }
 
 function buildParentIntercomTool(pending: Map<string, PendingSupervisorRequest>, state: SubagentState, name = "intercom"): ToolDefinition<typeof IntercomParamsSchema, Record<string, unknown>> {
+	const parentReplyOnly = name === NATIVE_SUPERVISOR_TOOL_NAME;
 	return {
 		name,
 		label: name === "intercom" ? "Intercom" : "Subagent Supervisor",
-		description: name === "intercom"
-			? "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests."
-			: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests without overriding pi-intercom.",
-		parameters: IntercomParamsSchema,
+		description: parentReplyOnly
+			? "Parent-reply-only supervisor tool. Valid actions: pending, reply, status. Children initiate requests with contact_supervisor({ reason: \"need_decision\" | \"interview_request\" | \"progress_update\" }); do not use this tool to send or ask."
+			: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests.",
+		parameters: (parentReplyOnly ? ParentSupervisorParamsSchema : IntercomParamsSchema) as typeof IntercomParamsSchema,
 		async execute(_id, params) {
 			refreshPendingRequests(pending, state, state.lastUiContext ?? undefined);
 			const input = params as IntercomParams;

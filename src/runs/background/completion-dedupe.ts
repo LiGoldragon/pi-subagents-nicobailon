@@ -1,3 +1,6 @@
+/** Shared across result-intercom and notification delivery in one Pi process. */
+export const PSYCHE_VISIBLE_COMPLETION_SEEN_STORE = "__pi_subagents_psyche_visible_completion_seen__";
+
 interface CompletionDataLike {
 	id?: unknown;
 	agent?: unknown;

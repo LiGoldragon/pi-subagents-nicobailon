@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { describe, it } from "node:test";
 import { createResultWatcher } from "../../src/runs/background/result-watcher.ts";
+import registerSubagentNotify from "../../src/runs/background/notify.ts";
 import { createNestedRoute, writeNestedEvent } from "../../src/runs/shared/nested-events.ts";
 import type { SubagentState } from "../../src/shared/types.ts";
 
@@ -151,6 +152,63 @@ describe("result watcher", () => {
 			assert.equal(other.emitted.some((entry) => entry.event === "subagent:result-intercom"), false);
 			assert.equal(fs.existsSync(ownerResultPath), false);
 			assert.equal(fs.existsSync(sessionlessResultPath), true);
+		} finally {
+			fs.rmSync(resultsDir, { recursive: true, force: true });
+		}
+	});
+
+	it("delivers one logical completion when result intercom and background notification observe the same result", async () => {
+		const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-result-watcher-shared-completion-"));
+		try {
+			const emitted: Array<{ event: string; data: unknown }> = [];
+			const listeners = new Map<string, Set<(payload: unknown) => void>>();
+			const notifications: Array<{ message: unknown; options: unknown }> = [];
+			const pi = {
+				events: {
+					on(event: string, handler: (payload: unknown) => void) {
+						const eventListeners = listeners.get(event) ?? new Set();
+						eventListeners.add(handler);
+						listeners.set(event, eventListeners);
+						return () => eventListeners.delete(handler);
+					},
+					emit(event: string, data: unknown) {
+						emitted.push({ event, data });
+						for (const handler of listeners.get(event) ?? []) handler(data);
+						if (event === "subagent:result-intercom") {
+							const requestId = data && typeof data === "object" ? (data as { requestId?: unknown }).requestId : undefined;
+							if (typeof requestId === "string") setImmediate(() => pi.events.emit("subagent:result-intercom-delivery", { requestId, delivered: true }));
+						}
+					},
+				},
+				sendMessage(message: unknown, options: unknown) {
+					notifications.push({ message, options });
+				},
+			};
+			const state = createState();
+			state.currentSessionId = "session-1";
+			registerSubagentNotify(pi as never, state, { batchConfig: { enabled: false } });
+			const watcher = createResultWatcher(pi, state, resultsDir, 60_000);
+			try {
+				fs.writeFileSync(path.join(resultsDir, "dedupe-result.json"), JSON.stringify({
+					id: `dedupe-${Date.now()}-${Math.random()}`,
+					runId: "dedupe-run",
+					agent: "worker",
+					mode: "single",
+					success: true,
+					state: "complete",
+					summary: "done once",
+					sessionId: "session-1",
+					intercomTarget: "parent",
+				}), "utf-8");
+				watcher.primeExistingResults();
+				await new Promise((resolve) => setTimeout(resolve, 100));
+			} finally {
+				watcher.stopResultWatcher();
+			}
+
+			assert.equal(emitted.filter((entry) => entry.event === "subagent:result-intercom").length, 1);
+			assert.equal(emitted.filter((entry) => entry.event === "subagent:async-complete").length, 1);
+			assert.deepEqual(notifications, []);
 		} finally {
 			fs.rmSync(resultsDir, { recursive: true, force: true });
 		}

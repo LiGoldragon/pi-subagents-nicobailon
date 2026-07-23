@@ -28,7 +28,6 @@ interface ReconcileAsyncRunOptions {
 	now?: () => number;
 	startedRun?: StartedRunMetadata;
 	missingStatusGraceMs?: number;
-	staleAlivePidMs?: number;
 }
 
 interface ReconcileAsyncRunResult {
@@ -378,13 +377,10 @@ export function reconcileAsyncRun(asyncDir: string, options: ReconcileAsyncRunOp
 	}
 
 	const liveness = checkPidLiveness(effectiveStatus.pid, options.kill);
-	if (liveness !== "dead") {
-		const staleAfterMs = options.staleAlivePidMs ?? 24 * 60 * 60 * 1000;
-		const lastUpdate = effectiveStatus.lastUpdate ?? effectiveStatus.startedAt;
-		if (now - lastUpdate <= staleAfterMs) return { status: status ?? null, repaired: false, resultPath };
-		const message = `Async runner process ${effectiveStatus.pid} still has a live PID, but status has not updated for ${now - lastUpdate}ms. Marked run failed by stale-run reconciliation because PID ownership cannot be verified.`;
-		return writeFailedRepair(asyncDir, effectiveStatus, resultPath, now, message);
-	}
+	// An alive or unverifiable process remains running regardless of how old its
+	// timestamp is. Recovery requires non-silence evidence that the process is
+	// gone; managers can inspect timestamps manually through status.
+	if (liveness !== "dead") return { status: status ?? null, repaired: false, resultPath };
 
 	return writeFailedRepair(asyncDir, effectiveStatus, resultPath, now);
 }

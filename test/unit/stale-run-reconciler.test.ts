@@ -193,7 +193,7 @@ describe("async stale-run reconciliation", () => {
 		}
 	});
 
-	it("fails a stale run when a live pid has not updated beyond the stale threshold", () => {
+	it("keeps a live process running regardless of stale timestamps", () => {
 		const root = tempRoot("pi-stale-live-pid-");
 		try {
 			const asyncDir = path.join(root, "run-reused-pid");
@@ -212,12 +212,10 @@ describe("async stale-run reconciliation", () => {
 				resultsDir,
 				kill: () => true,
 				now: () => 5000,
-				staleAlivePidMs: 1000,
 			});
 
-			assert.equal(result.repaired, true);
-			assert.equal(result.status?.state, "failed");
-			assert.match(result.message ?? "", /live PID, but status has not updated/);
+			assert.equal(result.repaired, false);
+			assert.equal(result.status?.state, "running");
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });
 		}

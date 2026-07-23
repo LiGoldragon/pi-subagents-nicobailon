@@ -43,7 +43,6 @@ import {
 import {
 	DEFAULT_CONTROL_CONFIG,
 	buildControlEvent,
-	deriveActivityState,
 	claimControlNotification,
 	formatControlIntercomMessage,
 	formatControlNoticeMessage,
@@ -76,7 +75,6 @@ import {
 	createMutatingFailureState,
 	didMutatingToolFail,
 	isMutatingTool,
-	nextLongRunningTrigger,
 	recordMutatingFailure,
 	resetMutatingFailureState,
 	resolveCurrentPath,
@@ -700,50 +698,12 @@ function runPiStreaming(
 				protocolHardKillTimer = undefined;
 			}
 		};
-		function startFinalDrain(): void {
-			if (childWatchdogIsActive(childWatchdogState)) {
-				armWatchdogTail();
-				return;
-			}
-			if (childExited || finalDrainTimer || settled) return;
-			finalDrainTimer = setTimeout(() => {
-				if (settled) return;
-				const termSent = trySignalChild(child, "SIGTERM");
-				if (!termSent) return;
-				forcedTerminationSignal = true;
-				if (!cleanTerminalAssistantStopReceived && !agentSettledReceived && !error && !assistantError) {
-					error = `Subagent process did not exit within ${FINAL_STOP_GRACE_MS}ms after its terminal event. Forcing termination.`;
-				}
-				finalHardKillTimer = setTimeout(() => {
-					if (settled) return;
-					forcedTerminationSignal = trySignalChild(child, "SIGKILL") || forcedTerminationSignal;
-				}, HARD_KILL_MS);
-				finalHardKillTimer.unref?.();
-			}, FINAL_STOP_GRACE_MS);
-			finalDrainTimer.unref?.();
-		}
-		function clearWatchdogTailTimer(): void {
-			if (watchdogTailTimer) {
-				clearTimeout(watchdogTailTimer);
-				watchdogTailTimer = undefined;
-			}
-		}
-		function armWatchdogTail(): void {
-			if ((!cleanTerminalAssistantStopReceived && !agentSettledReceived) || watchdogTailTimer || settled) return;
-			watchdogTailTimer = setTimeout(() => {
-				watchdogTailTimer = undefined;
-				updateChildWatchdogState({
-					phase: "stale",
-					seq: (childWatchdogState?.seq ?? 0) + 1,
-					lastUpdate: Date.now(),
-					followUpPending: false,
-					reason: "child watchdog tail timeout",
-					timedOut: true,
-				});
-				startFinalDrain();
-			}, childWatchdogConfig?.watchdogTailTimeoutMs ?? 120_000);
-			watchdogTailTimer.unref?.();
-		}
+		// Silence after a terminal event is not authority to fail or terminate a
+		// child. Only explicit deadline, stop, interrupt, budget, and protocol
+		// limits retain termination paths.
+		function startFinalDrain(): void {}
+		function clearWatchdogTailTimer(): void {}
+		function armWatchdogTail(): void {}
 		child.on("exit", () => {
 			childExited = true;
 			clearDrainTimers();
@@ -1630,8 +1590,6 @@ async function runSubagent(
 	const pendingStepSteers: SteerRequest[] = [];
 	const steeringCapabilities = new Map<number, SteerCapability>();
 	let interrupted = false;
-	let currentActivityState: ActivityState | undefined;
-	let activityTimer: NodeJS.Timeout | undefined;
 	let timeoutTimer: NodeJS.Timeout | undefined;
 	let timedOut = false;
 	let stopped = false;
@@ -2008,30 +1966,14 @@ async function runSubagent(
 		groupNode.acceptanceStatus = acceptance?.status ?? groupNode.acceptanceStatus;
 	};
 
-	const stepOutputActivityAt = (index: number): number => {
-		const step = statusPayload.steps[index];
-		let lastActivityAt = step?.lastActivityAt ?? step?.startedAt ?? overallStartTime;
-		const outputPath = path.join(asyncDir, `output-${index}.log`);
-		try {
-			lastActivityAt = Math.max(lastActivityAt, fs.statSync(outputPath).mtimeMs);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-				console.error(`Failed to inspect async output file '${outputPath}':`, error);
-			}
-		}
-		return lastActivityAt;
-	};
 	const emittedControlEventKeys = new Set<string>();
-	const activeLongRunningSteps = new Set<number>();
 	const mutatingFailureStates = initialStatusSteps.map(() => createMutatingFailureState());
 	const pendingToolResults: Array<{ tool: string; path?: string; mutates: boolean; startedAt?: number } | undefined> = initialStatusSteps.map(() => undefined);
 	const mutatingFailureWindowMs = 5 * 60_000;
 	const appendControlEvent = (event: ReturnType<typeof buildControlEvent>) => {
 		if (!controlConfig.enabled) return;
 		const childIntercomTarget = config.childIntercomTargets?.[event.index ?? statusPayload.currentStep];
-		const channels = event.type === "active_long_running"
-			? controlConfig.notifyChannels.filter((channel) => channel !== "intercom")
-			: controlConfig.notifyChannels;
+		const channels = controlConfig.notifyChannels;
 		if (channels.length === 0 || !claimControlNotification(controlConfig, event, emittedControlEventKeys, childIntercomTarget)) return;
 		appendJsonl(eventsPath, JSON.stringify({
 			type: "subagent.control",
@@ -2054,42 +1996,6 @@ async function runSubagent(
 		statusPayload.currentTool = activeStep?.currentTool;
 		statusPayload.currentToolStartedAt = activeStep?.currentToolStartedAt;
 		statusPayload.currentPath = activeStep?.currentPath;
-	};
-	const maybeEmitActiveLongRunning = (flatIndex: number, now: number): boolean => {
-		if (!controlConfig.enabled || activeLongRunningSteps.has(flatIndex)) return false;
-		const step = statusPayload.steps[flatIndex];
-		if (!step || step.status !== "running" || step.activityState === "needs_attention") return false;
-		const reason = nextLongRunningTrigger(controlConfig, {
-			startedAt: step.startedAt ?? overallStartTime,
-			now,
-			turns: step.turnCount ?? 0,
-			tokens: step.tokens?.total ?? 0,
-		});
-		if (!reason) return false;
-		activeLongRunningSteps.add(flatIndex);
-		const previous = step.activityState;
-		step.activityState = "active_long_running";
-		statusPayload.activityState = statusPayload.activityState === "needs_attention" ? "needs_attention" : "active_long_running";
-		const event = buildControlEvent({
-			type: "active_long_running",
-			from: previous,
-			to: "active_long_running",
-			runId: id,
-			agent: step.agent,
-			index: flatIndex,
-			ts: now,
-			message: `${step.agent} is still active but long-running`,
-			reason,
-			turns: step.turnCount,
-			tokens: step.tokens?.total,
-			toolCount: step.toolCount,
-			currentTool: step.currentTool,
-			currentToolDurationMs: step.currentToolStartedAt ? Math.max(0, now - step.currentToolStartedAt) : undefined,
-			currentPath: step.currentPath,
-			elapsedMs: now - (step.startedAt ?? overallStartTime),
-		});
-		appendControlEvent(event);
-		return true;
 	};
 	const steeringMarkerPath = (requestId: string): string => path.join(asyncDir, "control", "steer-recovery", `${Buffer.from(requestId).toString("base64url")}.json`);
 	const markSteeringAttention = (index: number): void => {
@@ -2378,81 +2284,14 @@ async function runSubagent(
 		step.lastActivityAt = now;
 		statusPayload.lastActivityAt = now;
 		statusPayload.lastUpdate = now;
-		maybeEmitActiveLongRunning(flatIndex, now);
 		writeStatusPayload();
 	};
-	const updateRunnerActivityState = (now: number): boolean => {
-		if (!controlConfig.enabled) return false;
-		let changed = false;
-		let runLastActivityAt = statusPayload.lastActivityAt ?? overallStartTime;
-		for (let index = 0; index < statusPayload.steps.length; index++) {
-			const step = statusPayload.steps[index]!;
-			if (step.status !== "running") continue;
-			const lastActivityAt = stepOutputActivityAt(index);
-			runLastActivityAt = Math.max(runLastActivityAt, lastActivityAt);
-			if (step.lastActivityAt !== lastActivityAt) {
-				step.lastActivityAt = lastActivityAt;
-				changed = true;
-			}
-			const idleState = deriveActivityState({
-				config: controlConfig,
-				startedAt: step.startedAt ?? overallStartTime,
-				lastActivityAt,
-				now,
-			});
-			if (idleState === "needs_attention") {
-				const previous = step.activityState;
-				step.activityState = "needs_attention";
-				if (previous !== "needs_attention") {
-					appendControlEvent(buildControlEvent({
-						from: previous,
-						to: "needs_attention",
-						runId: id,
-						agent: step.agent,
-						index,
-						ts: now,
-						lastActivityAt,
-					}));
-					changed = true;
-				}
-			} else if (maybeEmitActiveLongRunning(index, now)) {
-				changed = true;
-			}
-		}
-		if (statusPayload.lastActivityAt !== runLastActivityAt) {
-			statusPayload.lastActivityAt = runLastActivityAt;
-			changed = true;
-		}
-		const nextRunState = statusPayload.steps.some((step) => step.activityState === "needs_attention")
-			? "needs_attention"
-			: statusPayload.steps.some((step) => step.activityState === "active_long_running")
-				? "active_long_running"
-				: undefined;
-		if (nextRunState !== currentActivityState) {
-			currentActivityState = nextRunState;
-			statusPayload.activityState = nextRunState;
-			changed = true;
-		}
-		statusPayload.lastUpdate = now;
-		if (changed) writeStatusPayload();
-		return changed;
-	};
-	if (controlConfig.enabled) {
-		activityTimer = setInterval(() => {
-			if (statusPayload.state !== "running") return;
-			const now = Date.now();
-			updateRunnerActivityState(now);
-		}, 1000);
-		activityTimer.unref?.();
-	}
-
 	const interruptRunner = () => {
 		consumeInterruptRequest(asyncDir);
 		if (interrupted || statusPayload.state !== "running") return;
 		interrupted = true;
 		const now = Date.now();
 		statusPayload.state = "paused";
-		currentActivityState = undefined;
 		statusPayload.activityState = undefined;
 		statusPayload.lastUpdate = now;
 		for (const step of statusPayload.steps) {
@@ -2480,7 +2319,6 @@ async function runSubagent(
 		statusPayload.state = "stopped";
 		statusPayload.stopped = true;
 		statusPayload.error = stopMessage;
-		currentActivityState = undefined;
 		statusPayload.activityState = undefined;
 		statusPayload.lastUpdate = now;
 		for (const step of statusPayload.steps) {
@@ -2513,7 +2351,6 @@ async function runSubagent(
 		statusPayload.state = "failed";
 		statusPayload.timedOut = true;
 		statusPayload.error = message;
-		currentActivityState = undefined;
 		statusPayload.activityState = undefined;
 		statusPayload.lastUpdate = now;
 		for (const step of statusPayload.steps) {
@@ -3586,10 +3423,6 @@ async function runSubagent(
 		}
 	}
 
-	if (activityTimer) {
-		clearInterval(activityTimer);
-		activityTimer = undefined;
-	}
 	if (timeoutTimer) {
 		clearTimeout(timeoutTimer);
 		timeoutTimer = undefined;

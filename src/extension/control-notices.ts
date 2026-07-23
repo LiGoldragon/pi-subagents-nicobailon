@@ -52,7 +52,9 @@ function deliverControlNotice(input: {
 			display: true,
 			details: { ...input.details, childIntercomTarget, noticeText },
 		},
-		{ triggerTurn: input.details.source !== "foreground" },
+		// Control notices are machine events. They remain visible without becoming
+		// a psyche reply or interrupting the active conversation.
+		{ triggerTurn: false },
 	);
 }
 

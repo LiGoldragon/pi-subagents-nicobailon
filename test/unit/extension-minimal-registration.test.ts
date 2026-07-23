@@ -37,9 +37,9 @@ function inspectRegistration(config: object): { tools: Record<string, string[]>;
 }
 
 describe("extension disclosure registration", () => {
-	it("keeps minimal registration to direct launch plus recovery list without wait or workflow commands", () => {
+	it("keeps minimal registration to direct launch plus recovery list and manual status without wait or workflow commands", () => {
 		const registration = inspectRegistration({});
-		assert.deepEqual(registration.tools.subagent, ["action", "agent", "async", "context", "task"]);
+		assert.deepEqual(registration.tools.subagent, ["action", "agent", "async", "context", "id", "task", "view"]);
 		assert.equal(registration.tools.subagent_wait, undefined);
 		for (const command of ["run", "chain", "parallel", "run-chain", "prompt-workflow", "chain-prompts"]) assert.equal(registration.commands.includes(command), false);
 	});

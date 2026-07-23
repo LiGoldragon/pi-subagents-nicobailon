@@ -55,7 +55,7 @@ function wait(ms: number): Promise<void> {
 }
 
 describe("subagent control notice delivery", () => {
-	it("delivers async needs-attention notices immediately", () => {
+	it("delivers async needs-attention notices without interrupting the psyche", () => {
 		const state = makeState();
 		const recorder = makeRecorder();
 
@@ -68,7 +68,19 @@ describe("subagent control notice delivery", () => {
 		});
 
 		assert.equal(recorder.sent.length, 1);
-		assert.deepEqual(recorder.sent[0]?.options, { triggerTurn: true });
+		assert.deepEqual(recorder.sent[0]?.options, { triggerTurn: false });
+	});
+
+	it("dedupes duplicate async attention deliveries by logical control identity", () => {
+		const state = makeState();
+		const recorder = makeRecorder();
+		const visibleControlNotices = new Set<string>();
+		const details = { source: "async" as const, event: needsAttentionEvent() };
+
+		handleSubagentControlNotice({ pi: recorder.pi, state, visibleControlNotices, details });
+		handleSubagentControlNotice({ pi: recorder.pi, state, visibleControlNotices, details });
+
+		assert.equal(recorder.sent.length, 1);
 	});
 
 	it("queues foreground needs-attention notices until the same step is still actionable", async () => {

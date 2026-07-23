@@ -68,7 +68,7 @@ ${SUBAGENT_SAFETY_GUIDANCE}`;
 export const COMPACT_SUBAGENT_TOOL_DESCRIPTION = `Delegate one focused task directly.
 
 DIRECT LAUNCH: { agent: "agent-name", task?: "...", async?: true, context?: "fresh" | "fork" }.
-Do not list first. If an agent name is unknown or a direct launch fails, use { action: "list" } as an optional backup; it shows normally discoverable available agents. Omitting async means true/background; use async:false only for legitimate foreground work. A generated Manager roster may guide role selection, but it does not authorize or restrict runtime operations.
+Do not list first. If an agent name is unknown or a direct launch fails, use { action: "list" } as an optional backup; it shows normally discoverable available agents and does not authorize or restrict runtime operations. Managers can manually inspect workers with { action: "status", id: "..." } or { action: "status", view: "fleet" }; these are the only compact control actions. Omitting async means true/background; use async:false only for legitimate foreground work.
 
 ${SUBAGENT_SAFETY_GUIDANCE}
 

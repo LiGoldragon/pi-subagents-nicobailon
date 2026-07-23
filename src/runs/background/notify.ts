@@ -9,7 +9,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { buildCompletionKey, getGlobalSeenMap, markSeenWithTtl } from "./completion-dedupe.ts";
+import { buildCompletionKey, getGlobalSeenMap, markSeenWithTtl, PSYCHE_VISIBLE_COMPLETION_SEEN_STORE } from "./completion-dedupe.ts";
 import {
 	type CompletionBatchConfig,
 	type CompletionBatcher,
@@ -148,7 +148,7 @@ function sendCompletion(pi: Pick<ExtensionAPI, "sendMessage">, details: Subagent
 			content,
 			display: true,
 		},
-		{ triggerTurn: true },
+		{ triggerTurn: false },
 	);
 }
 
@@ -243,7 +243,7 @@ export default function registerSubagentNotify(
 		}
 	}
 
-	const seen = getGlobalSeenMap("__pi_subagents_notify_seen__");
+	const seen = getGlobalSeenMap(PSYCHE_VISIBLE_COMPLETION_SEEN_STORE);
 	const ttlMs = 10 * 60 * 1000;
 	const nowFn = options.now ?? Date.now;
 	const batchConfig = resolveCompletionBatchConfig(options.batchConfig);
@@ -260,7 +260,7 @@ export default function registerSubagentNotify(
 		if (typeof result.sessionId !== "string" || result.sessionId !== state.currentSessionId) return;
 		if (result.notification?.owner === "nested" && result.notification.visibility !== "child") return;
 		const now = nowFn();
-		const key = buildCompletionKey(result, "notify");
+		const key = buildCompletionKey(result, "completion");
 		if (markSeenWithTtl(seen, key, now, ttlMs)) return;
 
 		const details = buildCompletionDetails(result);

@@ -45,7 +45,6 @@ describe("child watchdog status helpers", () => {
 			runId: "run-1",
 			agent: "worker",
 			childIndex: 1,
-			watchdogTailTimeoutMs: 100,
 			agentEndTimeoutMs: 200,
 			maxWarnings: null,
 			lsp: { enabled: false, timeoutMs: 50, maxFiles: 2, maxDiagnostics: 3 },

@@ -15,17 +15,19 @@ try {
 }
 
 describe("minimal generated-role launch schema", { skip: !schemasAvailable ? "typebox not available" : undefined }, () => {
-	it("registers direct launch fields plus recovery-only list by default", () => {
-		assert.deepEqual(Object.keys(SubagentParams?.properties ?? {}).sort(), ["action", "agent", "async", "context", "task"]);
+	it("exposes Manager manual status in the compact schema without advertising other controls", () => {
+		assert.deepEqual(Object.keys(SubagentParams?.properties ?? {}).sort(), ["action", "agent", "async", "context", "id", "task", "view"]);
 		const context = SubagentParams?.properties?.context as { enum?: string[] } | undefined;
 		const action = SubagentParams?.properties?.action as { enum?: string[] } | undefined;
+		const view = SubagentParams?.properties?.view as { enum?: string[] } | undefined;
 		assert.deepEqual(context?.enum, ["fresh", "fork"]);
-		assert.deepEqual(action?.enum, ["list"]);
+		assert.deepEqual(action?.enum, ["list", "status"]);
+		assert.deepEqual(view?.enum, ["fleet", "transcript"]);
 	});
 
 	it("keeps controls, fanout, budgets, models, and administration in full disclosure", () => {
 		const full = FullSubagentParams?.properties ?? {};
-		for (const field of ["id", "tasks", "chain", "worktree", "acceptance", "toolBudget", "turnBudget", "model", "schedule", "config", "control"]) {
+		for (const field of ["tasks", "chain", "worktree", "acceptance", "toolBudget", "turnBudget", "model", "schedule", "config", "control"]) {
 			assert.ok(full[field], `full schema should expose ${field}`);
 			assert.equal(SubagentParams?.properties?.[field], undefined, `minimal schema must omit ${field}`);
 		}

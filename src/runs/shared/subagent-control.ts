@@ -7,9 +7,9 @@ import {
 	type ResolvedControlConfig,
 } from "../../shared/types.ts";
 
-const CONTROL_EVENT_TYPES: ControlEventType[] = ["active_long_running", "needs_attention"];
+const CONTROL_EVENT_TYPES: ControlEventType[] = ["needs_attention"];
 const CONTROL_NOTIFICATION_CHANNELS: ControlNotificationChannel[] = ["event", "async", "intercom"];
-const DEFAULT_NOTIFY_ON: ControlEventType[] = ["active_long_running", "needs_attention"];
+const DEFAULT_NOTIFY_ON: ControlEventType[] = ["needs_attention"];
 
 export const DEFAULT_CONTROL_CONFIG: ResolvedControlConfig = {
 	enabled: true,
@@ -70,17 +70,15 @@ export function resolveControlConfig(
 	};
 }
 
-export function deriveActivityState(input: {
+export function deriveActivityState(_input: {
 	config: ResolvedControlConfig;
 	startedAt: number;
 	lastActivityAt?: number;
 	now?: number;
 }): ActivityState | undefined {
-	if (!input.config.enabled) return undefined;
-	const now = input.now ?? Date.now();
-	const lastActivity = input.lastActivityAt ?? input.startedAt;
-	const ageMs = Math.max(0, now - lastActivity);
-	return ageMs > input.config.needsAttentionAfterMs ? "needs_attention" : undefined;
+	// Timestamps are manual inspection facts, never a liveness signal. Silence
+	// must not turn a running child into an attention event or notification.
+	return undefined;
 }
 
 export function buildControlEvent(input: {
@@ -104,14 +102,9 @@ export function buildControlEvent(input: {
 	recentFailureSummary?: string;
 }): ControlEvent {
 	const ts = input.ts ?? Date.now();
-	const type = input.type ?? (input.to === "active_long_running" ? "active_long_running" : "needs_attention");
+	const type = input.type ?? "needs_attention";
 	const elapsedMs = input.elapsedMs ?? (input.lastActivityAt ? Math.max(0, ts - input.lastActivityAt) : undefined);
-	const elapsedSeconds = elapsedMs !== undefined ? Math.floor(elapsedMs / 1000) : undefined;
-	const message = input.message ?? (type === "active_long_running"
-		? `${input.agent} is still active but long-running`
-		: elapsedSeconds !== undefined
-			? `${input.agent} needs attention (no observed activity for ${elapsedSeconds}s)`
-			: `${input.agent} needs attention`);
+	const message = input.message ?? `${input.agent} needs attention`;
 	return {
 		type,
 		...(input.from ? { from: input.from } : {}),

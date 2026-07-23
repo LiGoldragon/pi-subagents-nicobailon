@@ -10,21 +10,20 @@ import {
 	resolveControlConfig,
 	shouldNotifyControlEvent,
 } from "../../src/runs/shared/subagent-control.ts";
-import { nextLongRunningTrigger } from "../../src/runs/shared/long-running-guard.ts";
 
 const config = resolveControlConfig(undefined, {
 	needsAttentionAfterMs: 300,
 });
 
 describe("subagent control attention state", () => {
-	it("marks a run as needing attention only after the idle threshold", () => {
+	it("never turns silence into an attention action", () => {
 		assert.equal(deriveActivityState({ config, startedAt: 0, lastActivityAt: 0, now: 50 }), undefined);
-		assert.equal(deriveActivityState({ config, startedAt: 0, lastActivityAt: 0, now: 400 }), "needs_attention");
-		assert.equal(deriveActivityState({ config, startedAt: 0, now: 400 }), "needs_attention");
+		assert.equal(deriveActivityState({ config, startedAt: 0, lastActivityAt: 0, now: 400 }), undefined);
+		assert.equal(deriveActivityState({ config, startedAt: 0, now: 400 }), undefined);
 	});
 
 
-	it("builds compact needs-attention control events", () => {
+	it("builds compact needs-attention control events without inferring a silence reason", () => {
 		const event = buildControlEvent({
 			to: "needs_attention",
 			runId: "run-1",
@@ -40,7 +39,7 @@ describe("subagent control attention state", () => {
 			runId: "run-1",
 			agent: "worker",
 			index: 2,
-			message: "worker needs attention (no observed activity for 0s)",
+			message: "worker needs attention",
 			reason: "idle",
 			elapsedMs: 900,
 		});
@@ -69,51 +68,13 @@ describe("subagent control attention state", () => {
 		assert.equal(event.reason, "completion_guard");
 	});
 
-	it("defaults notifications to active-long-running and needs attention", () => {
+	it("only notifies on explicit attention events", () => {
 		const event = buildControlEvent({ to: "needs_attention", runId: "run-1", agent: "worker" });
 		const activeEvent = buildControlEvent({ type: "active_long_running", to: "active_long_running", runId: "run-1", agent: "worker" });
 		assert.equal(shouldNotifyControlEvent(config, event), true);
-		assert.equal(shouldNotifyControlEvent(config, activeEvent), true);
-		assert.deepEqual(config.notifyOn, ["active_long_running", "needs_attention"]);
+		assert.equal(shouldNotifyControlEvent(config, activeEvent), false);
+		assert.deepEqual(config.notifyOn, ["needs_attention"]);
 		assert.deepEqual(config.notifyChannels, ["event", "async", "intercom"]);
-	});
-
-	it("defaults active-long-running notices to elapsed time only", () => {
-		const defaults = resolveControlConfig();
-
-		assert.equal(defaults.activeNoticeAfterMs, 240_000);
-		assert.equal(defaults.activeNoticeAfterTurns, undefined);
-		assert.equal(defaults.activeNoticeAfterTokens, undefined);
-		assert.equal(nextLongRunningTrigger(defaults, {
-			startedAt: 0,
-			now: 77_000,
-			turns: 50,
-			tokens: 800_000,
-		}), undefined);
-		assert.equal(nextLongRunningTrigger(defaults, {
-			startedAt: 0,
-			now: 240_000,
-			turns: 1,
-			tokens: 1,
-		}), "time_threshold");
-	});
-
-	it("supports opt-in turn and token long-running thresholds", () => {
-		const tokenBudget = resolveControlConfig(undefined, { activeNoticeAfterMs: 999_999, activeNoticeAfterTokens: 500_000 });
-		const turnBudget = resolveControlConfig(undefined, { activeNoticeAfterMs: 999_999, activeNoticeAfterTurns: 5 });
-
-		assert.equal(nextLongRunningTrigger(tokenBudget, {
-			startedAt: 0,
-			now: 77_000,
-			turns: 1,
-			tokens: 500_000,
-		}), "token_threshold");
-		assert.equal(nextLongRunningTrigger(turnBudget, {
-			startedAt: 0,
-			now: 77_000,
-			turns: 5,
-			tokens: 1,
-		}), "turn_threshold");
 	});
 
 	it("resolves custom notification config", () => {
@@ -131,7 +92,7 @@ describe("subagent control attention state", () => {
 		assert.equal(custom.activeNoticeAfterTurns, 7);
 		assert.equal(custom.activeNoticeAfterTokens, 8000);
 		assert.equal(custom.failedToolAttemptsBeforeAttention, 4);
-		assert.deepEqual(custom.notifyOn, ["active_long_running", "needs_attention"]);
+		assert.deepEqual(custom.notifyOn, ["needs_attention"]);
 		assert.deepEqual(custom.notifyChannels, ["event", "intercom"]);
 	});
 
@@ -140,7 +101,7 @@ describe("subagent control attention state", () => {
 			notifyOn: ["bogus" as never],
 			notifyChannels: ["bogus" as never],
 		});
-		assert.deepEqual(custom.notifyOn, ["active_long_running", "needs_attention"]);
+		assert.deepEqual(custom.notifyOn, ["needs_attention"]);
 		assert.deepEqual(custom.notifyChannels, ["event", "async", "intercom"]);
 	});
 
@@ -168,31 +129,6 @@ describe("subagent control attention state", () => {
 		assert.match(message, /Status: subagent\(\{ action: "status", id: "78f659a3" \}\)/);
 		assert.match(message, /Interrupt: subagent\(\{ action: "interrupt", id: "78f659a3" \}\)/);
 		assert.doesNotMatch(message, /Wait:/);
-	});
-
-	it("formats active-long-running notices as informational", () => {
-		const event = buildControlEvent({
-			type: "active_long_running",
-			to: "active_long_running",
-			runId: "78f659a3",
-			agent: "worker",
-			turns: 15,
-			tokens: 160000,
-			toolCount: 42,
-			currentTool: "edit",
-			currentPath: "src/runs/background/async-status.ts",
-			reason: "turn_threshold",
-		});
-
-		const message = formatControlNoticeMessage(event, "subagent-worker-78f659a3-1");
-
-		assert.match(message, /Subagent active but long-running: worker/);
-		assert.match(message, /Inspect status/);
-		assert.match(message, /Nudge: subagent\(\{ action: "resume", id: "78f659a3", message: "What are you blocked on\?/);
-		assert.match(message, /15 turns/);
-		assert.match(message, /160000 tokens/);
-		assert.match(message, /path src\/runs\/background\/async-status\.ts/);
-		assert.doesNotMatch(message, /Subagent needs attention/);
 	});
 
 	it("formats terminal completion guard notices without live-run commands", () => {

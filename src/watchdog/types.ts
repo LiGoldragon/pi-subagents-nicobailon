@@ -105,7 +105,6 @@ export interface WatchdogChildOverrideConfig {
 }
 
 export interface WatchdogChildrenConfig extends WatchdogEndpointConfig {
-	watchdogTailTimeoutMs: number;
 	autoFollow: WatchdogAutoFollowConfig;
 	overrides: Record<string, WatchdogChildOverrideConfig>;
 }

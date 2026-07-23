@@ -23,15 +23,16 @@ function state(sessionId: string): SubagentState {
 }
 
 describe("steering notices", () => {
-	it("delivers a failure notice to the matching parent session", () => {
-		const messages: unknown[] = [];
+	it("delivers a failure notice to the matching parent session without triggering a psyche turn", () => {
+		const messages: Array<{ message: unknown; options: unknown }> = [];
 		handleSubagentSteeringNotice({
-			pi: { sendMessage: (message: unknown) => messages.push(message) } as any,
+			pi: { sendMessage: (message: unknown, options: unknown) => messages.push({ message, options }) } as any,
 			state: state("session-1"),
 			details: { runId: "run", requestId: "request", state: "failed", message: "not delivered", currentSessionId: "session-1" },
 		});
 		assert.equal(messages.length, 1);
-		assert.match(JSON.stringify(messages[0]), /not delivered/);
+		assert.match(JSON.stringify(messages[0]?.message), /not delivered/);
+		assert.deepEqual(messages[0]?.options, { triggerTurn: false });
 	});
 
 	it("suppresses notices owned by another or missing parent session", () => {

@@ -639,7 +639,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 	});
 
 
-	it("emits an active-long-running notice after the turn threshold", async () => {
+	it("does not emit liveness control events after a turn threshold", async () => {
 		mockPi.onCall({
 			jsonl: [
 				events.assistantMessage("first update"),
@@ -651,17 +651,14 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 
 		const result = await runSync(tempDir, agents, "echo", "Investigate behavior", {
 			runId: "run-active",
-			controlConfig: { enabled: true, activeNoticeAfterTurns: 2, activeNoticeAfterMs: 999_999, activeNoticeAfterTokens: 999_999, notifyOn: ["active_long_running", "needs_attention"] },
+			controlConfig: { enabled: true, activeNoticeAfterTurns: 2, activeNoticeAfterMs: 1, activeNoticeAfterTokens: 1, notifyOn: ["active_long_running", "needs_attention"] },
 			onControlEvent: (event: NonNullable<RunSyncResult["controlEvents"]>[number]) => controlEvents.push(event),
 		});
 
 		assert.equal(result.exitCode, 0);
-		assert.equal(controlEvents.length, 1);
-		assert.equal(controlEvents[0]?.type, "active_long_running");
-		assert.equal(controlEvents[0]?.reason, "turn_threshold");
-		assert.equal(controlEvents[0]?.turns, 2);
-		assert.equal(result.controlEvents?.[0]?.type, "active_long_running");
-		assert.equal(result.progress.activityState, "active_long_running");
+		assert.deepEqual(controlEvents, []);
+		assert.equal(result.controlEvents, undefined);
+		assert.equal(result.progress.activityState, undefined);
 	});
 
 	it("escalates repeated mutating tool failures to needs attention", async () => {
@@ -837,16 +834,16 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		}
 	});
 
-	it("treats agent_settled as a clean terminal watermark", async () => {
+	it("waits for process close after agent_settled", async () => {
 		const nonTerminalMessage = events.assistantMessage("settled without a terminal assistant stop") as { message: { stopReason: string } };
 		nonTerminalMessage.message.stopReason = "length";
-		mockPi.onCall({ jsonl: [nonTerminalMessage, { type: "agent_settled" }], keepAliveAfterFinalMessageMs: 5000 });
+		mockPi.onCall({ jsonl: [nonTerminalMessage, { type: "agent_settled" }], keepAliveAfterFinalMessageMs: 25 });
 		const startedAt = Date.now();
 		const result = await runSync(tempDir, makeAgentConfigs(["echo"]), "echo", "Wait until settled", { acceptance: false });
 		assert.equal(result.exitCode, 0);
 		assert.equal(result.error, undefined);
 		assert.equal(getFinalOutput(result.messages), "settled without a terminal assistant stop");
-		assert.ok(Date.now() - startedAt < 4000, "agent_settled should trigger bounded child cleanup");
+		assert.ok(Date.now() - startedAt < 4000, "the runner should complete after the child exits");
 	});
 
 	it("persists a child lifecycle disconnect as a runtime error without attributing its cause", async () => {
@@ -1911,7 +1908,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		await withIsolatedWatchdogSettings(tempDir, async () => {
 			mockPi.onCall({
 				jsonl: [events.assistantMessage("done-without-watchdog-config"), childWatchdogStatus("reviewing", 1)],
-				keepAliveAfterFinalMessageMs: 10000,
+				keepAliveAfterFinalMessageMs: 25,
 			});
 			const agents = makeAgentConfigs(["echo"]);
 
@@ -1934,7 +1931,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 					{ jsonl: [events.assistantMessage("done-before-watchdog"), childWatchdogStatus("reviewing", 1)] },
 					{ delay: 1400, jsonl: [childWatchdogStatus("idle", 2)] },
 				],
-				keepAliveAfterFinalMessageMs: 10000,
+				keepAliveAfterFinalMessageMs: 25,
 			});
 			const agents = makeAgentConfigs(["echo"]);
 
@@ -1946,16 +1943,16 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			assert.ok(elapsed < 6000, `settled watchdog should still allow cleanup, took ${elapsed}ms`);
 			assert.equal(result.exitCode, 0);
 			assert.equal(result.finalOutput, "done-before-watchdog");
-			assert.equal((result as RunSyncResult & { watchdog?: { phase?: string } }).watchdog?.phase, "idle");
+			assert.equal((result as RunSyncResult & { watchdog?: unknown }).watchdog, undefined);
 		});
 	});
 
-	it("falls back after child watchdog tail timeout without failing successful foreground output", async () => {
+	it("does not convert a pending child watchdog into a timeout", async () => {
 		await withIsolatedWatchdogSettings(tempDir, async () => {
 			writeWatchdogSettings(tempDir, 150);
 			mockPi.onCall({
 				jsonl: [events.assistantMessage("done-before-watchdog-timeout"), childWatchdogStatus("reviewing", 1)],
-				keepAliveAfterFinalMessageMs: 10000,
+				keepAliveAfterFinalMessageMs: 25,
 			});
 			const agents = makeAgentConfigs(["echo"]);
 
@@ -1963,12 +1960,10 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 			const result = await runSync(tempDir, agents, "echo", "Task", { runId: "watchdog-child-run" });
 			const elapsed = Date.now() - start;
 
-			assert.ok(elapsed < 5000, `watchdog tail fallback should not hang, took ${elapsed}ms`);
+			assert.ok(elapsed < 5000, `the process exit should finalize the run, took ${elapsed}ms`);
 			assert.equal(result.exitCode, 0);
 			assert.equal(result.finalOutput, "done-before-watchdog-timeout");
-			const watchdog = (result as RunSyncResult & { watchdog?: { phase?: string; timedOut?: boolean } }).watchdog;
-			assert.equal(watchdog?.phase, "stale");
-			assert.equal(watchdog?.timedOut, true);
+			assert.equal((result as RunSyncResult & { watchdog?: unknown }).watchdog, undefined);
 		});
 	});
 
@@ -1976,7 +1971,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		mockPi.onCall({
 			jsonl: [events.assistantMessage("done-before-drain")],
 			stderr: "Done after 1 turn(s). Ready for input.\n",
-			keepAliveAfterFinalMessageMs: 10000,
+			keepAliveAfterFinalMessageMs: 25,
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
@@ -2003,7 +1998,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 					usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0.001 } },
 				},
 			}],
-			keepAliveAfterFinalMessageMs: 10000,
+			keepAliveAfterFinalMessageMs: 25,
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
@@ -2011,7 +2006,7 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 		const result = await runSync(tempDir, agents, "echo", "Task", {});
 		const elapsed = Date.now() - start;
 
-		assert.ok(elapsed < 4000, `should clean up shortly after empty terminal stop, took ${elapsed}ms`);
+		assert.ok(elapsed < 4000, `should finish after the child exits, took ${elapsed}ms`);
 		assert.equal(result.exitCode, 0);
 		assert.equal(result.error, undefined);
 		assert.equal(result.finalOutput, "");
@@ -2032,15 +2027,15 @@ describe("single sync execution", { skip: !available ? "pi packages not availabl
 					usage: { input: 100, output: 0, cacheRead: 0, cacheWrite: 0, cost: { total: 0.001 } },
 				},
 			}],
-			keepAliveAfterFinalMessageMs: 10000,
+			keepAliveAfterFinalMessageMs: 25,
 		});
 		const agents = makeAgentConfigs(["echo"]);
 
 		const result = await runSync(tempDir, agents, "echo", "Task", {});
 
 		assert.equal(result.exitCode, 1);
-		assert.equal(result.processExitCode, null);
-		assert.equal(result.processSuccess, false);
+		assert.equal(result.processExitCode, 0);
+		assert.equal(result.processSuccess, true);
 		assert.equal(result.error, "provider exploded");
 		assert.equal(result.progress.status, "failed");
 	});

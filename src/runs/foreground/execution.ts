@@ -34,7 +34,6 @@ import {
 	DEFAULT_CONTROL_CONFIG,
 	buildControlEvent,
 	claimControlNotification,
-	deriveActivityState,
 	shouldNotifyControlEvent,
 } from "../shared/subagent-control.ts";
 import {
@@ -64,7 +63,6 @@ import {
 	createMutatingFailureState,
 	didMutatingToolFail,
 	isMutatingTool,
-	nextLongRunningTrigger,
 	recordMutatingFailure,
 	resetMutatingFailureState,
 	resolveCurrentPath,
@@ -326,7 +324,6 @@ async function runSingleAttempt(
 		let assistantError: string | undefined;
 		let removeAbortListener: (() => void) | undefined;
 		let removeInterruptListener: (() => void) | undefined;
-		let activityTimer: NodeJS.Timeout | undefined;
 		let timeoutTimer: NodeJS.Timeout | undefined;
 		let timeoutTerminationTimer: NodeJS.Timeout | undefined;
 		let timeoutHardKillTimer: NodeJS.Timeout | undefined;
@@ -415,45 +412,11 @@ async function runSingleAttempt(
 				finalHardKillTimer = undefined;
 			}
 		};
-		const startFinalDrain = () => {
-			if (childWatchdogIsActive(childWatchdogState)) {
-				armWatchdogTail();
-				return;
-			}
-			if (childExited || finalDrainTimer || settled || processClosed || detached) return;
-			finalDrainTimer = setTimeout(() => {
-				if (settled || processClosed || detached) return;
-				const termSent = trySignalChild(proc, "SIGTERM");
-				if (!termSent) return;
-				forcedTerminationSignal = true;
-				if (!cleanTerminalAssistantStopReceived && !agentSettledReceived && !assistantError) {
-					result.error = result.error ?? `Subagent process did not exit within ${FINAL_STOP_GRACE_MS}ms after its terminal event. Forcing termination.`;
-				}
-				finalHardKillTimer = setTimeout(() => {
-					if (settled || processClosed || detached) return;
-					forcedTerminationSignal = trySignalChild(proc, "SIGKILL") || forcedTerminationSignal;
-				}, HARD_KILL_MS);
-				finalHardKillTimer.unref?.();
-			}, FINAL_STOP_GRACE_MS);
-			finalDrainTimer.unref?.();
-		};
-		function armWatchdogTail(): void {
-			if ((!cleanTerminalAssistantStopReceived && !agentSettledReceived) || watchdogTailTimer || settled || processClosed || detached) return;
-			watchdogTailTimer = setTimeout(() => {
-				watchdogTailTimer = undefined;
-				updateChildWatchdogState({
-					phase: "stale",
-					seq: (childWatchdogState?.seq ?? 0) + 1,
-					lastUpdate: Date.now(),
-					followUpPending: false,
-					reason: "child watchdog tail timeout",
-					timedOut: true,
-				});
-				startFinalDrain();
-				fireUpdate();
-			}, childWatchdog?.watchdogTailTimeoutMs ?? 120_000);
-			watchdogTailTimer.unref?.();
-		}
+		// A terminal event is not proof that the child is silent, stuck, or safe to
+		// terminate. Explicit deadlines, stop, interrupt, and budget actions retain
+		// their own paths; ordinary completion now waits for the child to close.
+		const startFinalDrain = () => {};
+		function armWatchdogTail(): void {}
 		const applyChildLifecycle = (action: ChildLifecycleAction): void => {
 			if (action === "cancel-drain") {
 				clearFinalDrainTimers();
@@ -491,10 +454,6 @@ async function runSingleAttempt(
 				clearTimeout(protocolHardKillTimer);
 				protocolHardKillTimer = undefined;
 			}
-			if (activityTimer) {
-				clearInterval(activityTimer);
-				activityTimer = undefined;
-			}
 			unsubscribeIntercomDetach?.();
 			removeAbortListener?.();
 			removeInterruptListener?.();
@@ -508,7 +467,6 @@ async function runSingleAttempt(
 			return events;
 		};
 
-		let activeLongRunningNotified = false;
 		let pendingToolResult: { tool: string; path?: string; mutates: boolean; startedAt?: number } | undefined;
 		const mutatingFailures = createMutatingFailureState();
 		const mutatingFailureWindowMs = 5 * 60_000;
@@ -538,31 +496,6 @@ async function runSingleAttempt(
 			});
 			emitControlEvent(event);
 			return previous !== "needs_attention";
-		};
-		const emitActiveLongRunning = (now: number, reason: ControlEvent["reason"]): boolean => {
-			if (!controlConfig.enabled || activeLongRunningNotified || progress.activityState === "needs_attention") return false;
-			activeLongRunningNotified = true;
-			const previous = progress.activityState;
-			progress.activityState = "active_long_running";
-			emitControlEvent(buildControlEvent({
-				type: "active_long_running",
-				from: previous,
-				to: "active_long_running",
-				runId: options.runId,
-				agent: agent.name,
-				index: options.index,
-				ts: now,
-				message: `${agent.name} is still active but long-running`,
-				reason,
-				turns: result.usage.turns,
-				tokens: progress.tokens,
-				toolCount: progress.toolCount,
-				currentTool: progress.currentTool,
-				currentToolDurationMs: currentToolDurationMs(now),
-				currentPath: progress.currentPath,
-				elapsedMs: now - startTime,
-			}));
-			return true;
 		};
 		const requestTurnBudgetAbort = (turnCount: number) => {
 			const budget = options.turnBudget;
@@ -606,26 +539,6 @@ async function runSingleAttempt(
 			if (shouldAbortForTurnBudget(budget, turnCount, terminalAssistantStop)) {
 				requestTurnBudgetAbort(turnCount);
 			}
-		};
-
-		const updateActivityState = (now: number): boolean => {
-			if (!controlConfig.enabled) return false;
-			const idleState = deriveActivityState({
-				config: controlConfig,
-				startedAt: startTime,
-				lastActivityAt: progress.lastActivityAt,
-				now,
-			});
-			if (idleState === "needs_attention") {
-				return progress.activityState === "needs_attention" ? false : emitNeedsAttention(now);
-			}
-			const activeReason = nextLongRunningTrigger(controlConfig, {
-				startedAt: startTime,
-				now,
-				turns: result.usage.turns,
-				tokens: progress.tokens,
-			});
-			return activeReason ? emitActiveLongRunning(now, activeReason) : false;
 		};
 
 
@@ -692,7 +605,6 @@ async function runSingleAttempt(
 			const now = Date.now();
 			progress.durationMs = now - startTime;
 			progress.lastActivityAt = now;
-			updateActivityState(now);
 
 			if (evt.type === "tool_execution_start") {
 				const toolArgs = evt.args && typeof evt.args === "object" && !Array.isArray(evt.args)
@@ -760,7 +672,6 @@ async function runSingleAttempt(
 						applyChildLifecycle(projectChildLifecycle(evt, true));
 					}
 				}
-				updateActivityState(now);
 				fireUpdate();
 			}
 
@@ -797,18 +708,6 @@ async function runSingleAttempt(
 				fireUpdate();
 			}
 		};
-
-		if (controlConfig.enabled) {
-			activityTimer = setInterval(() => {
-				if (processClosed || settled || detached) return;
-				const now = Date.now();
-				if (updateActivityState(now)) {
-					progress.durationMs = now - startTime;
-					fireUpdate();
-				}
-			}, 1000);
-			activityTimer.unref?.();
-		}
 
 		if (attemptTimeout) {
 			timeoutTimer = setTimeout(() => {

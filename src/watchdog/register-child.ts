@@ -28,10 +28,6 @@ function childResolvedConfig(config: ChildWatchdogConfig): ResolvedWatchdogConfi
 			maxAttempts: config.autoFollowMaxAttempts,
 			stalemateRepeats: config.stalemateRepeats,
 		},
-		children: {
-			...DEFAULT_WATCHDOG_CONFIG.children,
-			watchdogTailTimeoutMs: config.watchdogTailTimeoutMs,
-		},
 		lsp: { ...config.lsp },
 	};
 }
